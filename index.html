@@ -1,0 +1,1034 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inventory &amp; Billing</title>
+<style>
+:root{--navy:#002060;--line:#c9d2e3;--bg:#f4f6fb;--ink:#111}
+*{box-sizing:border-box}
+body{margin:0;font:13px/1.4 Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg)}
+/* fixed sidebar: never scrolls away */
+.side{position:fixed;top:0;bottom:0;left:0;width:230px;background:#96C93D;color:#111;display:flex;flex-direction:column;z-index:10;overflow-y:auto}
+.side .brand{padding:16px 16px 14px;border-bottom:1px solid rgba(0,0,0,.18);margin-bottom:10px}
+.side .brand .clinic{font-weight:bold;font-size:15px;line-height:1.25}
+.side .brand .dept{font-size:12px;margin-top:4px}
+.side select{width:calc(100% - 32px);margin:0 16px 8px;padding:5px}
+.nav button{display:block;width:100%;text-align:left;background:none;border:0;color:#111;padding:9px 16px;font-size:13px;cursor:pointer}
+.nav button:hover,.nav button.on{background:#7fae2e;color:#fff}
+.side .foot{margin-top:auto;padding:12px 16px;font-size:11px}
+details.card>summary{cursor:pointer;font-weight:bold;color:#2f5a0e;list-style:none}
+details.card>summary::-webkit-details-marker{display:none}
+details.card>summary::before{content:'\25B8';display:inline-block;margin-right:6px;transition:transform .15s}
+details.card[open]>summary::before{transform:rotate(90deg)}
+.cbody{margin-top:10px}
+main{margin-left:230px;min-height:100vh}
+.top{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid var(--line);padding:10px 20px;display:flex;align-items:center;gap:8px}
+.top h2{margin:0;font-size:16px;flex:1}
+.pad{padding:16px 20px}
+.btn{background:var(--navy);color:#fff;border:1px solid var(--navy);padding:7px 12px;border-radius:3px;cursor:pointer;font:inherit}
+.ghost{background:#fff;color:var(--navy)}
+.danger{background:#a11b1b;border-color:#a11b1b}
+input,select,textarea{font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:3px;background:#fff}
+.card{background:#fff;border:1px solid var(--line);border-radius:4px;padding:12px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:130px 1fr;gap:6px 10px;align-items:center;max-width:720px}
+.tw{overflow:auto;background:#fff;border:1px solid var(--line);max-height:calc(100vh - 230px)}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid var(--line);padding:3px 5px;white-space:nowrap}
+th{background:var(--navy);color:#fff;position:sticky;top:0;font-size:11px;z-index:1}
+td input[type=text],td input[type=date]{border:0;background:transparent;padding:2px;width:100%}
+td.c{text-align:center}
+.tot td{font-weight:bold;background:#e8edf7}
+.hide{display:none}
+.toast{position:fixed;bottom:16px;right:16px;background:var(--navy);color:#fff;padding:8px 14px;border-radius:3px;opacity:0;transition:.3s;pointer-events:none}
+.toast.on{opacity:1}
+.stmt{background:#fff;padding:26px 32px;border:1px solid var(--line);max-width:840px}
+.stmt .lh{text-align:center;line-height:1.35;margin-bottom:6px}
+.stmt h3{text-align:center;margin:14px 0}
+.stmt th{background:var(--navy)}
+.stmtT{border-collapse:collapse;width:100%}
+.stmtT th,.stmtT td{white-space:normal;border:1px solid var(--line)}
+.stmtT th{position:static}
+.stmtT .nb{border:0!important}
+.lhd{text-align:center;padding-bottom:6px}
+.lhwrap{display:flex;flex-direction:column;align-items:center;gap:6px}
+.logo{max-width:380px;max-height:190px;width:auto;height:auto}
+.lhtxt{text-align:center;line-height:1.45}
+.ttl{text-align:center;font-weight:bold;font-size:14px;padding:8px 0}
+.billgrid{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;padding:4px 0 10px}
+.billgrid .r{margin-left:auto;min-width:230px}
+.sig{display:flex;justify-content:space-around;margin-top:30px;text-align:center;break-inside:avoid}
+.sig .sigimg{height:100px;display:flex;align-items:flex-end;justify-content:center}
+.sig .sigimg img{max-height:100px;max-width:240px;width:auto;height:auto;object-fit:contain}
+.sig b{display:block;border-top:1px solid #000;padding-top:4px;margin-top:0}
+.note{margin-top:12px;font-size:12px}
+@page{size:A4;margin:12mm 10mm 16mm;
+  @bottom-left{content:"Confidential";font:9px Arial,sans-serif;color:#555;vertical-align:top;padding-top:4mm}
+  @bottom-right{content:"Page " counter(page) " of " counter(pages);font:9px Arial,sans-serif;color:#555;vertical-align:top;padding-top:4mm}}
+@media print{
+  .side,.top,.noprint,.toast,dialog,#login{display:none!important}
+  main{margin:0}
+  .pad{padding:0}
+  body{background:#fff}
+  .tw{max-height:none;overflow:visible;border:0}
+  th{position:static}
+  .stmt{border:0;max-width:none;padding:0}
+  table{font-size:10px}
+  tr{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div id="login" style="position:fixed;inset:0;background:#eef3e4;display:none;align-items:center;justify-content:center;z-index:100">
+  <form id="loginForm" class="card" style="width:340px">
+    <div style="text-align:center;margin-bottom:10px"><b style="color:#2f5a0e">Exact Check Diagnostic Center</b><br>Medical Field Operations</div>
+    <h3 id="loginTitle" style="margin-top:0"></h3>
+    <p id="loginNote" style="font-size:12px"></p>
+    <div class="grid" style="grid-template-columns:110px 1fr">
+      <label>Username</label><input id="lUser" autocomplete="username">
+      <label>Password</label><input id="lPass" type="password" autocomplete="current-password">
+    </div>
+    <p id="lErr" style="color:#a11b1b;font-size:12px;min-height:16px;margin:8px 0"></p>
+    <button class="btn" id="lBtn" type="submit" style="width:100%;background:#96C93D;border-color:#96C93D;color:#111;font-weight:bold"></button>
+  </form>
+</div>
+<aside class="side">
+  <div class="brand"><div class="clinic">Exact Check Diagnostic Center</div><div class="dept">Medical Field Operations</div></div>
+  <select id="coSel" title="Company"></select>
+  <nav class="nav" id="nav"></nav>
+  <div class="foot" id="foot"></div>
+</aside>
+
+<main>
+  <header class="top">
+    <h2 id="title"></h2>
+    <span id="dirty" style="font-size:12px"></span>
+    <button class="btn ghost" id="bNew">+ New company</button>
+    <button class="btn ghost" id="bSave">Save</button>
+    <button class="btn" id="bPrint">Print</button>
+  </header>
+  <div class="pad" id="view"></div>
+</main>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="fileIn" accept=".csv,.xlsx,.xlsm,.xls" class="hide">
+<input type="file" id="jsonIn" accept=".json" class="hide">
+<input type="file" id="imgIn" accept="image/png,image/jpeg" class="hide">
+<dialog id="sigDlg" style="padding:16px;border:1px solid #999;border-radius:4px">
+  <h3 id="sigT" style="margin-top:0"></h3>
+  <canvas id="sigCv" width="500" height="180" style="border:1px dashed #888;background:#fff;touch-action:none;max-width:100%"></canvas>
+  <p style="font-size:12px">Draw with the mouse or a finger. Strokes print in black.</p>
+  <button class="btn ghost" id="sigClr">Clear</button>
+  <button class="btn ghost" id="sigNo">Cancel</button>
+  <button class="btn" id="sigOk">Use signature</button>
+</dialog>
+<style id="pageStyle"></style>
+
+<!-- SheetJS reads .xlsx/.xlsm/.csv in the browser (VBA is ignored, values are read) -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<!-- ===== ENGINE: pure logic ported from the VBA modules (no DOM) ===== -->
+<script id="engine">
+// Module5 (MatchAndProcessInventory) + Module6 (GenerateBillingReport) + Module7 (ClearBillingData) logic.
+// The workbook's billing loop stops at SGOT (TOTAL CHOLESTEROL and TRIGLYCERIDES have prices but are never billed).
+// Set true to bill every priced test.
+const BILL_ALL_TESTS = false;
+
+// [breakdownId, label, default price (Breakdown row 5), inventory flag column]
+const TESTS = [
+ ['B5','Basic 5',450,'PE'],['CBC','CBC',0,'CBC'],['URINE','URINE',0,'URINE'],['STOOL','STOOL',0,'STOOL'],['XRAY','XRAY',0,'XRAY'],
+ ['CHEM','Chemistry Package',1065,'CHEM'],['ECG','ECG',300,'ECG'],['PS','Pap Smear',400,'PS'],['DT','Drug Test',300,'DT'],['HBSAG','HBSAG Screening',180,'HBSAG'],
+ ['HBA1C','Hba1c',450,'HBA1C'],['THY','Thyroid Package',1190,'THYROID'],['BLOOD','Blood Typing w/ Card',243,'BLOOD'],['FBS','FBS',90,'FBS'],['LIPID','LIPID PROFILE',495,'LIPID'],
+ ['BUA','BUA',117,'BUA'],['BUN','BUN',117,'BUN'],['CREA','Creatinine',117,'CREA'],['SGPT','SGPT',126,'SGPT'],['SGOT','SGOT',126,'SGOT'],
+ ['TCHOL','TOTAL CHOLESTEROL',117,'TCHOL'],['TRIG','TRIGLYCERIDES',153,'TRIG'],
+ ['OTHERS','Others',0,'OTHERS']
+];
+const FLAGS = TESTS.map(t => t[3]);
+// Basic 5 = PE marked, or any bundled member marked (MatchAndProcessInventory section B)
+const BUNDLE = ['PE','CBC','URINE','STOOL','XRAY'];
+const NOT_BILLED = BILL_ALL_TESTS ? [] : ['TCHOL', 'TRIG'];   // the macro never billed these two
+const LINE_TESTS = TESTS.filter(t => !NOT_BILLED.includes(t[0]));  // billing lines
+const ROW_TESTS = LINE_TESTS;                                       // rows with any billable test
+// header aliases used when importing CSV / workbook headers
+const ALIAS = {'CHEMISTRY PACKAGE':'CHEM','PAP SMEAR':'PS','DRUG TEST':'DT','HBSAG SCREENING':'HBSAG','HBA1C':'HBA1C',
+ 'THYROID PACKAGE':'THYROID','BLOOD TYPING W/ CARD':'BLOOD','LIPID PROFILE':'LIPID','CREATININE':'CREA',
+ 'TOTAL CHOLESTEROL':'TCHOL','TRIGLYCERIDES':'TRIG','BASIC 5':'PE'};
+
+const flag = v => v === 1 || String(v ?? '').trim() === '1';
+const bdHas = (p, t) => { const f = k => flag(p.t?.[k]); return t[0] === 'B5' ? BUNDLE.some(f) : f(t[3]); };
+const price = (c, t) => Number(c.prices?.[t[0]] ?? t[2]) || 0;
+
+// DATEDIF(birthday, asOf, "Y")
+function age(bd, asOf) {
+  if (!bd || !asOf) return '';
+  const b = new Date(bd + 'T00:00:00'), a = new Date(asOf + 'T00:00:00');
+  let y = a.getFullYear() - b.getFullYear();
+  if (a.getMonth() < b.getMonth() || (a.getMonth() === b.getMonth() && a.getDate() < b.getDate())) y--;
+  return y;
+}
+
+// standard package used when a provider has no custom package
+const HMO_PKG = ['B5', 'ECG', 'PS'];
+// HMO / life package: billed to the company's provider. All other tests go to the company.
+// Set the provider once per company (Inventory tab). The provider's package is set under Prices & Letterhead.
+//   company: every billable test; if a provider is set, its package tests are left for the provider statement.
+//   hmo:     only the provider's package tests.
+function billing(c, packageOf) {
+  const hmo = c.billType === 'hmo', pkgOf = packageOf || (() => HMO_PKG), prov = (c.provider || '').trim();
+  const pkg = pkgOf(prov), lines = []; let total = 0;
+  if (!(hmo && !prov)) c.patients.forEach(p => {
+    const parts = []; let amt = 0;
+    LINE_TESTS.forEach(t => {
+      const pr = price(c, t), inPkg = pkg.includes(t[0]);
+      if (!bdHas(p, t) || !(pr > 0)) return;
+      if (hmo ? !inPkg : (prov && inPkg)) return;
+      parts.push(t[1]); amt += pr;
+    });
+    if (!parts.length) return;
+    lines.push({ no: lines.length + 1, name: p.name || '', date: c.date || '', desc: parts.join(' + '), amt });
+    total += amt;
+  });
+  const hasDp = c.downpayment !== '' && c.downpayment != null;
+  const dp = hasDp ? Number(c.downpayment) || 0 : 0;
+  return { lines, total, hasDp, dp, net: total - dp };
+}
+
+// Transmittal = YYYYMMDD_ + first two words of company name, spaces removed (C10 formula)
+function transmittal(name, date) {
+  const ymd = (date || '').replace(/-/g, '');
+  const w = (name || '').trim().split(/\s+/).slice(0, 2).join('');
+  return ymd ? `${ymd}_${w}` : '';
+}
+// Transmittal No. = YYYYMMDD-CODE-NNN. CODE is auto-suggested from the company name (editable per company).
+function companyCode(name) {
+  return (String(name || '').trim().split(/\s+/)[0] || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase() || 'CO';
+}
+// Due date = APE date + 30 days (C12 formula)
+function dueDate(date) {
+  if (!date) return '';
+  const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + 30); return isoOf(d);
+}
+function isoOf(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function isoDate(v) {
+  if (v === '' || v == null) return '';
+  let d;
+  if (v instanceof Date) d = new Date(v.getFullYear(), v.getMonth(), v.getDate());
+  else if (typeof v === 'number') { const u = new Date(Math.round((v - 25569) * 864e5)); d = new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate()); }
+  else {
+    const s = String(v).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    d = new Date(s); if (isNaN(d)) return '';
+  }
+  return isoOf(d);
+}
+const str = v => (v == null ? '' : String(v).trim());
+const fmtD = s => s ? new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : '';
+const fmt = n => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// Read an INVENTORY-style workbook (xlsm/xlsx) or a plain CSV. Locates the header row and the
+// company block by their labels, not fixed cells, so differently laid-out files still import.
+const isNameHdr = H => H === 'NAME' || /^FULL NAME|^PATIENT NAME/.test(H);
+const norm = s => String(s ?? '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+function parseBook(bytes) {
+  if (typeof XLSX === 'undefined') throw new Error('The Excel reader did not load. Check the internet connection, or host xlsx.full.min.js locally (see README).');
+  const wb = XLSX.read(bytes, { type: 'array', cellDates: true });
+  const grid = n => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '', raw: true });
+  const sheetNames = wb.SheetNames;
+  // find the sheet with a NAME header in its first 30 rows; prefer one called INVENTORY
+  const findHdr = rows => rows.slice(0, 30).findIndex(r => r.some(c => isNameHdr(norm(c))));
+  const order = [...sheetNames].sort((a, b) => (norm(b) === 'INVENTORY') - (norm(a) === 'INVENTORY'));
+  let sName = null, rows = null, hdrIdx = -1;
+  for (const n of order) { const g = grid(n); const i = findHdr(g); if (i >= 0) { sName = n; rows = g; hdrIdx = i; break; } }
+  if (hdrIdx < 0) {
+    const first = grid(sheetNames[0]).slice(0, 3).map(r => r.filter(c => c !== '').join(' | ')).join(' / ');
+    throw new Error(`No name column (NAME or Full Name) was found in any sheet (${sheetNames.join(', ')}). First rows: ${first || 'empty'}`);
+  }
+  const out = { patients: [], prices: null, co: null, sheet: sName };
+  // company block: label cells such as COMPANY / ADDRESS / DATE above the header
+  rows.slice(0, hdrIdx).forEach((r, ri) => {
+    r.forEach((c, ci) => {
+      const L = norm(c);
+      const v = () => { for (let j = ci + 1; j < r.length; j++) if (str(r[j]) !== '' && !norm(r[j]).endsWith(':')) return r[j]; return ''; };
+      out.co = out.co || {};
+      if (L.startsWith('COMPANY')) out.co.name = str(v());
+      else if (L.startsWith('ADDRESS')) out.co.address = str(v());
+      else if (L.startsWith('DATE')) out.co.date = isoDate(v());
+    });
+  });
+  // prices: an optional breakdown-style sheet with a "BILL PRICE" row above a row of test names
+  const bdName = sheetNames.find(n => norm(n) === 'INVENTORY BREAKDOWN');
+  if (bdName) {
+    const g = grid(bdName);
+    const pr = g.findIndex(r => r.some(c => norm(c) === 'BILL PRICE'));
+    if (pr >= 0 && g[pr + 1]) {
+      out.prices = {};
+      g[pr + 1].forEach((h, i) => {
+        const t = TESTS.find(t => norm(t[1]) === norm(h));
+        const v = g[pr][i];
+        if (t && v !== '' && v != null) out.prices[t[0]] = Number(v);
+      });
+    }
+  }
+  // column map from the header row
+  const col = {};
+  rows[hdrIdx].forEach((h, i) => {
+    const H = norm(h);
+    if (isNameHdr(H)) col.name = i;
+    else if (H === 'SN') col.sn = i;
+    else if (['ACCOUNT NUMBER', 'ACCOUNT NO.', 'ACCOUNT NO', 'ACCOUNT'].includes(H)) col.acc = i;
+    else if (['BIRTHDAY', 'BIRTH DATE', 'BIRTHDATE', 'DOB'].includes(H)) col.bd = i;
+    else if (['GENDER', 'SEX'].includes(H)) col.sex = i;
+    else if (['HMO', 'HMO NAME', 'PROVIDER', 'LIFE INSURANCE'].includes(H)) col.hmo = i;
+    else if (H === 'REMARKS') col.rem = i;
+    else if (H === '') { if (col.rem !== undefined && col.doc === undefined && i > col.rem) col.doc = i; }
+    else { const k = ALIAS[H] || FLAGS.find(f => f === H); if (k) col['t_' + k] = i; }
+  });
+  rows.slice(hdrIdx + 1).forEach(r => {
+    const name = str(r[col.name]);
+    if (!name) { if (col.sn !== undefined && str(r[col.sn]) !== '') out.skipped = (out.skipped || 0) + 1; return; }
+    const t = {};
+    FLAGS.forEach(k => {
+      if (col['t_' + k] === undefined) return;
+      const v = r[col['t_' + k]];
+      if (v !== '' && v != null) t[k] = flag(v) ? 1 : str(v);   // keep non-1 codes such as "W"
+    });
+    out.patients.push({ acc: str(r[col.acc]), name, bd: isoDate(r[col.bd]), sex: str(r[col.sex]).toUpperCase().slice(0, 1), rem: str(r[col.rem]), hmo: col.hmo !== undefined ? str(r[col.hmo]) : '', doc: col.doc !== undefined ? str(r[col.doc]) : '', t });
+  });
+  return out;
+}
+</script>
+
+<!-- ===== APP: state, storage, views ===== -->
+<script>
+const VIEWS = [['inventory','Inventory'],['breakdown','Breakdown'],['billing','Billing'],['prices','Prices & Letterhead'],['data','Data & Storage']];
+// HMO master list: "Legal name | alias" per line. Edit under Prices & Letterhead.
+const DEF_HMO_TEXT = `Asalus Corporation | Intellicare
+Asiancare Health Systems, Inc. | Asiancare
+Avega Managed Care, Inc. | Avega
+Carewell Health Systems, Inc. | Carewell
+Cooperative Health Management Federation | CHMF / iCare
+Dynamic Care Corporation
+EastWest Healthcare, Inc. | EastWest Healthcare
+Forticare Health Systems International, Inc. | Forticare
+Getwell Health System, Inc. | Getwell
+Health Care and Development Corporation of the Philippines | PhilCare
+Health Delivery System, Inc.
+Health Maintenance, Inc.
+Health Plan Philippines, Inc. | HealthPlan Philippines
+IMS Wellth Care, Inc. | IMS Wellth Care
+Insular Health Care, Inc. | i-Care
+Kaiser International Healthgroup, Inc. | Kaiser
+Life & Health HMP, Inc.
+Maxicare Healthcare Corporation | Maxicare
+Medicard Philippines, Inc. | MediCard
+Medicare Plus, Inc. | Medicare Plus
+Medocare Health Systems, Inc. | Medocare
+Metrocare Health Systems, Incorporated | Metrocare
+Optimum Medical and Healthcare Services Inc. | Optimum Medical
+Pacific Cross Health Care, Inc. | Pacific Cross (formerly Blue Cross)
+PhilhealthCare, Inc.
+United Healthcare Philippines, Inc. | United Healthcare PH
+Value Care Health Systems, Inc. | ValuCare
+Wellpoint Health Systems, Inc. | Wellpoint
+Etiqa Life & General Assurance | Etiqa
+AXA Philippines | AXA
+Manulife Philippines | Manulife
+Sun Life Philippines | Sun Life
+Allianz PNB Life | Allianz PNB
+PRU Life UK | PRU Life UK
+AIA Philippines | AIA
+Insular Life | InLife
+Paramount Life & General Insurance | Paramount
+BPI AIA Life Assurance | BPI AIA`;
+function parseHmo(text) {
+  return String(text).split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+    const [name, alias] = l.split('|').map(s => s.trim());
+    return { name, alias: alias || '' };
+  });
+}
+let pkgProv = null;   // provider shown in the Provider packages card
+function packageFor(name) { return (settings.packages || {})[name] || HMO_PKG; }
+function pkgLabels(name) { return packageFor(name).map(id => (TESTS.find(t => t[0] === id) || [id, id])[1]).join(', '); }
+function curPkgProv() { const n = (settings.hmos || []).map(x => x.name); return n.includes(pkgProv) ? pkgProv : n[0]; }
+function pkgNote() {
+  return co.provider ? `Package for ${esc(co.provider)}: ${esc(pkgLabels(co.provider))}. Only these tests go to the provider; the rest go to the company.`
+    : 'Each provider has its own package (Prices & Letterhead → Provider packages). Only package tests go to the provider; the rest go to the company.';
+}
+function vHmoList() {
+  const rows = (settings.hmos || []).map((x, i) => `<tr>
+      <td><input data-hi="${i}" value="${esc(x.name)}" style="width:100%;min-width:260px"></td>
+      <td><input data-ha="${i}" value="${esc(x.alias || '')}" style="width:150px"></td>
+      <td><button class="btn danger" data-act="hmoDel" data-i="${i}">×</button></td></tr>`).join('');
+  return coll('hmo', 'HMO &amp; Life Insurance list', `
+    <p style="font-size:12px;margin:0 0 8px">Edit a name or alias and press Tab or click away to save it. The legal name is printed on the statement. Renaming a provider updates the patients already assigned to it in every company. Deleting a provider does not change those patients.</p>
+    <div class="tw" style="max-height:340px"><table><thead><tr><th>Legal name</th><th>Alias</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p style="margin:8px 0 0;display:flex;gap:6px;flex-wrap:wrap">
+      <input id="newName" placeholder="Legal name" style="flex:2;min-width:220px">
+      <input id="newAlias" placeholder="Alias (optional)" style="flex:1;min-width:120px">
+      <button class="btn" data-act="hmoAdd">Add provider</button></p>`);
+}
+// a provider was renamed: move its package and patient assignments (this company and every saved company)
+function renameProvider(oldName, newName) {
+  if (settings.packages && settings.packages[oldName]) { settings.packages[newName] = settings.packages[oldName]; delete settings.packages[oldName]; }
+  saveSettings();
+  if (co.provider === oldName) { co.provider = newName; dirty = true; }
+  index().forEach(x => {
+    if (x.id === co.id) return;
+    const c = openCo(x.id); if (!c) return;
+    if (c.provider === oldName) { c.provider = newName; localStorage.setItem(ck(c.id), JSON.stringify(c)); }
+  });
+}
+function vPkgCard() {
+  const provs = (settings.hmos || []).map(x => x.name), prov = curPkgProv(), cur = packageFor(prov);
+  return coll('pkg', 'Provider packages', `
+    <p style="font-size:12px;margin:0 0 8px">Tick the tests each provider covers. On a provider statement only these are billed to it; the rest go to the company.</p>
+    <div class="grid" style="grid-template-columns:110px 1fr;margin-bottom:8px"><label>Provider</label>
+      <select data-psel>${provs.map(n => `<option value="${esc(n)}"${n === prov ? ' selected' : ''}>${esc(hmoLabel(n))}</option>`).join('')}</select></div>
+    <div style="columns:2;font-size:13px">${TESTS.map(t => `<label style="display:block;break-inside:avoid"><input type="checkbox" data-ptest="${t[0]}" ${cur.includes(t[0]) ? 'checked' : ''}> ${esc(t[1])}</label>`).join('')}</div>
+    <p style="margin:8px 0 0"><button class="btn ghost" data-act="pkgReset" data-k="${esc(prov)}">Reset to standard package</button></p>`);
+}
+function hmoLabel(name) {
+  const x = (settings.hmos || []).find(x => x.name === name);
+  return x && x.alias ? `${name} (${x.alias})` : name;
+}
+const DEF_SET = {
+  issuer: { name: 'Exact Check Diagnostic Center, Inc.',
+            lines: ['Unit 5, 238 Banawe, cor. Pagataan and Panalturan Streets, Quezon City',
+                    'Tel. No. (02) 7756-5588 / (02) 8363-9228 / (02) 8294-8472 / 0917-654-1400',
+                    'TIN # 008-692-607-000'],
+            note: 'Note: Please make cheque payable to Exact Check Diagnostic Center, Inc.' },
+  prepared: ['Ayesah Rojaine F. Ferrancol', 'Medical Encoder'],
+  noted: ['Jilliane Tiffany Chua', 'VP-Operations'],
+  logo: '',
+  sigs: { prepared: '', noted: '' },
+  sigSize: { prepared: 100, noted: 150 },
+  hmos: parseHmo(DEF_HMO_TEXT)
+};
+let settings = { ...DEF_SET, ...(JSON.parse(localStorage.getItem('ibapp.settings') || 'null') || {}) };
+settings.sigs = { prepared: '', noted: '', ...(settings.sigs || {}) };
+settings.sigSize = { prepared: 100, noted: 150, ...(settings.sigSize || {}) };
+settings.extraTests = settings.extraTests || [];
+if (!Array.isArray(settings.hmos)) settings.hmos = DEF_SET.hmos;
+if ((settings.listVersion || 1) < 2) {
+  DEF_SET.hmos.forEach(d => { if (!settings.hmos.some(x => x.name === d.name)) settings.hmos.push(d); });
+  settings.listVersion = 2; saveSettings();
+}
+let view = 'inventory', dirty = false, co = null;
+const $ = s => document.querySelector(s);
+const today = () => isoOf(new Date());
+
+// ---- storage: one JSON record per company in localStorage ----
+const IDX = 'ibapp.index', ck = id => 'ibapp.co.' + id;
+const index = () => JSON.parse(localStorage.getItem(IDX) || '[]');
+// most common per-patient provider in a roster (used once, to migrate older files)
+function majorityProvider(patients) {
+  const n = {}; (patients || []).forEach(p => { const v = (p.hmo || '').trim(); if (v) n[v] = (n[v] || 0) + 1; });
+  const top = Object.entries(n).sort((a, b) => b[1] - a[1])[0];
+  return top ? top[0] : '';
+}
+function migrateCo(c) {
+  if (!c.archive) c.archive = [];
+  if (!c.providerMigrated) { if (!c.provider) c.provider = majorityProvider(c.patients); c.providerMigrated = true; }
+  return c;
+}
+const openCo = id => { const c = id ? JSON.parse(localStorage.getItem(ck(id)) || 'null') : null; return c && migrateCo(c); };
+function newCo(name) {
+  const c = { id: Date.now().toString(36), name, address: '', date: today(), prices: {}, patients: [], downpayment: '', billed: false };
+  TESTS.forEach(t => c.prices[t[0]] = t[2]);
+  return c;
+}
+function persist(c) {
+  c.updated = new Date().toISOString();
+  localStorage.setItem(ck(c.id), JSON.stringify(c));
+  const ix = index().filter(x => x.id !== c.id); ix.push({ id: c.id, name: c.name || 'Untitled' });
+  localStorage.setItem(IDX, JSON.stringify(ix));
+  localStorage.setItem('ibapp.last', c.id);
+}
+function saveSettings() { localStorage.setItem('ibapp.settings', JSON.stringify(settings)); }
+function save() { persist(co); dirty = false; render(); toast('Saved: ' + co.name); }
+
+// ---- UI helpers ----
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 2200); }
+function markDirty() { $('#dirty').textContent = dirty ? '● Unsaved changes' : 'Saved'; }
+function download(name, text) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = name; a.click();
+}
+
+// ---- views ----
+function vInv() {
+  const hasDoc = co.patients.some(p => p.doc);
+  const provOpts = (settings.hmos || []).map(x => `<option value="${esc(x.name)}"${x.name === co.provider ? ' selected' : ''}>${esc(hmoLabel(x.name))}</option>`).join('');
+  let h = `<div class="card"><div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+    <div class="grid" style="grid-template-columns:120px 1fr">
+      <label>COMPANY</label><input data-co="name" value="${esc(co.name)}">
+      <label>ADDRESS</label><input data-co="address" value="${esc(co.address)}">
+      <label>DATE (APE)</label><input type="date" data-co="date" value="${esc(co.date)}">
+    </div>
+    <div class="grid" style="grid-template-columns:150px 1fr">
+      <label>CODE (transmittal)</label><input data-co="code" value="${esc(co.code || '')}" placeholder="${companyCode(co.name)}">
+      <label>PROVIDER</label><select data-co="provider"><option value="">— none (company-billed only) —</option>${provOpts}</select>
+    </div></div></div>
+  <div class="noprint" style="margin-bottom:10px">
+    <button class="btn" data-act="add">+ Add patient</button>
+    <button class="btn ghost" data-act="import">Import CSV / Excel</button>
+    <button class="btn ghost" data-act="clearInv">Clear Inventory</button>
+  </div>
+  <div class="tw"><table><thead><tr><th>#</th><th>Account No.</th><th>Name</th><th>Birthday</th><th>Age</th><th>Sex</th>
+    ${FLAGS.map(k => `<th>${k}</th>`).join('')}<th>Remarks</th>${hasDoc ? '<th>Physician</th>' : ''}<th class="noprint"></th></tr></thead><tbody>`;
+  co.patients.forEach((p, i) => {
+    h += `<tr><td>${i + 1}</td>
+      <td><input type="text" data-i="${i}" data-f="acc" value="${esc(p.acc)}"></td>
+      <td><input type="text" data-i="${i}" data-f="name" value="${esc(p.name)}" style="min-width:210px"></td>
+      <td><input type="date" data-i="${i}" data-f="bd" value="${esc(p.bd || '')}"></td>
+      <td class="c">${age(p.bd, co.date)}</td>
+      <td><input type="text" maxlength="1" size="2" data-i="${i}" data-f="sex" value="${esc(p.sex)}"></td>
+      ${FLAGS.map(k => { const v = p.t?.[k]; return `<td class="c"><input type="checkbox" data-i="${i}" data-t="${k}" ${flag(v) ? 'checked' : ''}>${v && !flag(v) ? `<small>${esc(v)}</small>` : ''}</td>`; }).join('')}
+      <td><input type="text" data-i="${i}" data-f="rem" value="${esc(p.rem)}" style="min-width:170px"></td>
+      ${hasDoc ? `<td><input type="text" data-i="${i}" data-f="doc" value="${esc(p.doc)}" style="min-width:200px"></td>` : ''}
+      <td class="noprint"><button class="btn danger" data-act="del" data-i="${i}">×</button></td></tr>`;
+  });
+  const cnt = FLAGS.map(k => co.patients.filter(p => flag(p.t?.[k])).length);
+  h += `</tbody><tfoot><tr class="tot"><td colspan="6">Count</td>${cnt.map(c => `<td class="c">${c}</td>`).join('')}<td colspan="${hasDoc ? 3 : 2}"></td></tr></tfoot></table></div>`;
+  return h;
+}
+
+function vBd() {
+  let h = `<div class="noprint" style="margin-bottom:10px"><button class="btn ghost" data-act="refresh">Populate (refresh breakdown)</button>
+    <span> Derived from the Inventory tab. Basic 5 is set by PE, or CBC / URINE / STOOL / XRAY.</span></div>
+    <div class="printable"><h3 style="margin:4px 0">${esc(co.name)} — Inventory Breakdown</h3>
+    <div class="tw"><table><thead><tr><th>#</th><th>Name</th><th>Birthday</th><th>Age</th><th>Sex</th>
+    ${TESTS.map(t => `<th>${esc(t[1])}</th>`).join('')}</tr></thead><tbody>
+    <tr class="tot"><td colspan="5">BILL PRICE</td>${TESTS.map(t => `<td class="c">${price(co, t) || ''}</td>`).join('')}</tr>`;
+  co.patients.forEach((p, i) => {
+    h += `<tr><td>${i + 1}</td><td>${esc(p.name)}</td><td>${fmtD(p.bd)}</td><td class="c">${age(p.bd, co.date)}</td><td class="c">${esc(p.sex)}</td>
+      ${TESTS.map(t => `<td class="c">${bdHas(p, t) ? 1 : ''}</td>`).join('')}</tr>`;
+  });
+  const cnt = TESTS.map(t => co.patients.filter(p => bdHas(p, t)).length);
+  h += `</tbody><tfoot><tr class="tot"><td colspan="5">Count</td>${cnt.map(c => `<td class="c">${c}</td>`).join('')}</tr></tfoot></table></div></div>`;
+  return h;
+}
+
+let archId = null;   // archived statement being viewed (null = current billing)
+const fmtDT = iso => iso ? new Date(iso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+// everything a statement shows, taken from the current billing
+function draftData() {
+  const b = billing(co, packageFor), isHmo = (co.billType || 'company') === 'hmo';
+  return { client: co.name, billTo: isHmo ? hmoLabel(co.provider) : co.name, address: co.address, transmittal: co.transmittal || '',
+    apeDate: co.date, dueDate: dueDate(co.date), lines: b.lines, total: b.total, hasDp: b.hasDp, dp: b.dp, net: b.net,
+    note: settings.issuer.note, prepared: [...settings.prepared], noted: [...settings.noted] };
+}
+// the statement itself (used on screen, for print, and for the downloaded file)
+function stmtHtml(d) {
+  const iss = settings.issuer;
+  const sig = k => { const f = ((settings.sigSize || {})[k] || 100) / 100, hh = Math.round(100 * f), ww = Math.round(240 * f);
+    return `<div class="sigimg" style="height:${hh}px">${settings.sigs[k] ? `<img src="${settings.sigs[k]}" alt="" style="max-height:${hh}px;max-width:${ww}px">` : ''}</div>`; };
+  return `<div class="stmt printable"><table class="stmtT">
+    <thead>
+      <tr><td colspan="5" class="nb lhd"><div class="lhwrap">${settings.logo ? `<img class="logo" src="${settings.logo}" alt="">` : ''}
+        <div class="lhtxt">${iss.lines.map(esc).join('<br>')}</div></div></td></tr>
+      <tr><td colspan="5" class="nb ttl">STATEMENT OF ACCOUNT</td></tr>
+      <tr><td colspan="5" class="nb"><div class="billgrid">
+        <div><div><b>Billed to:</b> ${esc(d.billTo)}</div><div><b>Client:</b> ${esc(d.client)}</div><div><b>Company Address:</b> ${esc(d.address)}</div></div>
+        <div class="r"><div><b>Transmittal No.:</b> ${esc(d.transmittal)}</div><div><b>APE Date:</b> ${fmtD(d.apeDate)}</div><div><b>Due Date:</b> ${fmtD(d.dueDate)}</div></div>
+      </div></td></tr>
+      <tr><th style="width:44px">No</th><th>Name of Patient</th><th style="width:110px;text-align:center">Date</th><th>Charges Description</th><th style="text-align:right;width:120px">Amount</th></tr>
+    </thead>
+    <tbody>
+    ${d.lines.map(l => `<tr><td class="c">${l.no}</td><td>${esc(l.name)}</td><td class="c">${fmtD(l.date)}</td><td>${esc(l.desc)}</td><td style="text-align:right">${fmt(l.amt)}</td></tr>`).join('')}
+    <tr class="tot"><td colspan="4" style="text-align:right">Total:</td><td style="text-align:right">${fmt(d.total)}</td></tr>
+    ${d.hasDp ? `<tr><td colspan="4" style="text-align:right">Downpayment:</td><td style="text-align:right">${fmt(d.dp)}</td></tr>` : ''}
+    <tr class="tot"><td colspan="4" style="text-align:right">VAT EXEMPT (MEDICAL SERVICES) Total:</td><td style="text-align:right">${fmt(d.net)}</td></tr>
+    </tbody></table>
+    <p class="note">${esc(d.note)}</p>
+    <div class="sig">
+      <div style="min-width:240px">Prepared By:${sig('prepared')}<b>${esc(d.prepared[0])}</b>${esc(d.prepared[1])}</div>
+      <div style="min-width:240px">Noted By:${sig('noted')}<b>${esc(d.noted[0])}</b>${esc(d.noted[1])}</div>
+    </div></div>`;
+}
+// read-only copy saved when a statement is first issued
+function archiveCurrent() {
+  if (!co.transmittal) return;
+  co.archive = co.archive || [];
+  co.archive.push({ id: 'a' + Date.now().toString(36), transmittal: co.transmittal, type: co.billType || 'company', issued: new Date().toISOString(), data: draftData() });
+  persist(co);   // an issued number must survive a reload, so it is saved now (the Save button is not needed)
+}
+function archListHtml() {
+  const list = (co.archive || []).slice().reverse();
+  if (!list.length) return `<div class="card noprint" style="margin-top:14px">No archived statements yet. Each statement is saved here the first time you generate it.</div>`;
+  return `<div class="card noprint" style="margin-top:14px"><h3 style="margin-top:0">Archived statements (read-only)</h3>
+    <div class="tw" style="max-height:340px"><table><thead><tr><th>Transmittal</th><th>Type</th><th>Billed to</th><th>APE date</th><th>Issued</th><th style="text-align:right">Net</th><th></th></tr></thead><tbody>
+    ${list.map(e => `<tr><td>${esc(e.transmittal)}</td><td>${e.type === 'hmo' ? 'HMO-Billed' : 'Company-Billed'}</td><td>${esc(e.data.billTo)}</td><td>${fmtD(e.data.apeDate)}</td><td>${fmtDT(e.issued)}</td><td style="text-align:right">${fmt(e.data.net)}</td>
+      <td class="noprint"><button class="btn ghost" data-act="archView" data-k="${esc(e.id)}">View</button> <button class="btn ghost" data-act="archDl" data-k="${esc(e.id)}">Download</button></td></tr>`).join('')}
+    </tbody></table></div></div>`;
+}
+function vBill() {
+  if (archId) {
+    const e = (co.archive || []).find(x => x.id === archId);
+    if (e) return `<div class="card noprint" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>Archived statement ${esc(e.transmittal)}</b> · issued ${esc(fmtDT(e.issued))} · read-only copy
+        <span style="flex:1"></span><button class="btn ghost" data-act="archBack">Back to current billing</button>
+        <button class="btn" data-act="archDl" data-k="${esc(e.id)}">Download</button></div>` + stmtHtml(e.data) + archListHtml();
+    archId = null;
+  }
+  const isHmo = (co.billType || 'company') === 'hmo';
+  let h = `<div class="card noprint"><div class="grid" style="grid-template-columns:150px 1fr">
+      <label>Billing type</label><div>
+        <label style="margin-right:18px"><input type="checkbox" data-bt="company" ${isHmo ? '' : 'checked'}> Company-Billed</label>
+        <label><input type="checkbox" data-bt="hmo" ${isHmo ? 'checked' : ''}> HMO-Billed</label></div>
+      <label>Provider</label><div>${co.provider ? esc(hmoLabel(co.provider)) : '<i>Not set. Choose it in the company block on the Inventory tab.</i>'}</div>
+      <label>Downpayment</label><input type="number" step="0.01" data-co="downpayment" value="${esc(co.downpayment)}">
+      <label>Transmittal No.</label><input data-co="transmittal" value="${esc(co.transmittal || '')}" placeholder="Issued on Generate Billing">
+    </div>
+    <p style="font-size:12px;margin:8px 0 0">${pkgNote()}</p></div>
+    <div class="noprint" style="margin-bottom:10px">
+      <button class="btn" data-act="genBill">Generate Billing</button>
+      <button class="btn ghost" data-act="clearBill">Clear Billing</button>
+      ${co.billed ? '<button class="btn" data-act="dlSoa">Download statement</button>' : ''}
+      <span> Logo, letterhead and signatures are set under Prices &amp; Letterhead. Print uses the statement only.</span></div>`;
+  if (!co.billed) return h + `<div class="card noprint">Billing is empty. Click <b>Generate Billing</b> to build the statement from the Inventory tab.</div>` + archListHtml();
+  const b = billing(co, packageFor);
+  if (!b.lines.length) return h + `<div class="card noprint">${isHmo && !co.provider ? 'Set the provider in the company block on the Inventory tab first.'
+      : isHmo ? `No patients have a package test (${esc(pkgLabels(co.provider))}). Check the flags on the Inventory tab.`
+      : 'No billable tests for this selection. Check the flags on the Inventory tab.'}</div>` + archListHtml();
+  return h + stmtHtml(draftData()) + archListHtml();
+}
+
+function vPrices() {
+  const imgBox = src => `<div style="height:64px;width:240px;border-bottom:1px solid #000;display:flex;align-items:flex-end;justify-content:center">${src ? `<img src="${src}" style="max-height:60px;max-width:220px">` : '<i style="color:#888">not set</i>'}</div>`;
+  return `<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+  <div style="min-width:420px;flex:1">${coll('price', `Price list — ${esc(co.name)}`, `
+    <div class="tw" style="max-height:none"><table><thead><tr><th>Test</th><th>Flag</th><th>Price</th><th></th></tr></thead><tbody>
+    ${TESTS.map(t => `<tr><td>${esc(t[1])}</td><td>${t[3]}</td><td><input type="number" step="0.01" data-pk="${t[0]}" value="${price(co, t)}" style="width:110px"></td>
+      <td>${(settings.extraTests || []).some(x => x.code === t[3]) ? `<button class="btn danger" data-act="testDel" data-k="${esc(t[3])}">×</button>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>
+    <p style="margin:8px 0 0;display:flex;gap:6px;flex-wrap:wrap">
+      <input id="ntName" placeholder="Test name" style="flex:2;min-width:160px">
+      <input id="ntCode" placeholder="Flag code (e.g. ECG2)" style="width:150px">
+      <input id="ntPrice" type="number" step="0.01" placeholder="Price" style="width:110px">
+      <button class="btn" data-act="testAdd">Add test</button></p>
+    <p style="font-size:12px;margin:6px 0 0">The flag code becomes a column in the Inventory tab. Tests you add are billed at this price unless changed here.</p>
+    <p style="font-size:12px">Bundled tests (CBC, URINE, STOOL, XRAY) are priced 0: they are billed through Basic 5.</p>`)}</div>
+  <div style="min-width:420px;flex:1;display:grid;gap:16px">
+  ${coll('letter', 'Letterhead &amp; signatories (all companies)', `
+    <div class="grid" style="grid-template-columns:130px 1fr">
+      <label>Issuer name</label><input data-set="issuer.name" value="${esc(settings.issuer.name)}">
+      <label>Letterhead lines</label><textarea rows="4" data-set="issuer.lines">${esc(settings.issuer.lines.join('\\n'))}</textarea>
+      <label>Payee note</label><input data-set="issuer.note" value="${esc(settings.issuer.note)}">
+      <label>Prepared by</label><input data-set="prepared.0" value="${esc(settings.prepared[0])}">
+      <label>Title</label><input data-set="prepared.1" value="${esc(settings.prepared[1])}">
+      <label>Noted by</label><input data-set="noted.0" value="${esc(settings.noted[0])}">
+      <label>Title</label><input data-set="noted.1" value="${esc(settings.noted[1])}">
+    </div>`)}
+  ${vPkgCard()}
+  ${vHmoList()}
+  ${coll('logo', 'Logo (printed in the header of every page)', `
+    ${imgBox(settings.logo)}<p style="margin:8px 0 0">
+    <button class="btn ghost" data-act="upLogo">Upload logo (PNG / JPG)</button>
+    ${settings.logo ? '<button class="btn danger" data-act="rmLogo">Remove</button>' : ''}</p>`)}
+  ${coll('sigs', 'E-signatures', `
+    ${['prepared', 'noted'].map(k => `<div style="margin-bottom:14px"><b>${k === 'prepared' ? 'Prepared By' : 'Noted By'}</b>
+      ${imgBox(settings.sigs[k])}<p style="margin:6px 0 0">Print size <input type="number" min="50" max="250" step="10" data-sigsize="${k}" value="${(settings.sigSize || {})[k] || 100}" style="width:70px"> %</p><p style="margin:6px 0 0">
+      <button class="btn" data-act="sign" data-k="${k}">Draw signature</button>
+      <button class="btn ghost" data-act="upSig" data-k="${k}">Upload image</button>
+      ${settings.sigs[k] ? `<button class="btn danger" data-act="clrSig" data-k="${k}">Clear</button>` : ''}</p></div>`).join('')}
+    <p style="font-size:12px;margin:0">Signatures print on the statement above the signatory's name.</p>`)}
+  </div></div>`;
+}
+function vData() {
+  const me = sessionStorage.getItem(SESS_KEY);
+  return `<div class="card" style="max-width:760px"><h3 style="margin-top:0">Roster import</h3>
+    <p>Upload the workbook (.xlsm / .xlsx) or a CSV. The INVENTORY tab, its header block and the Breakdown prices are read automatically. A CSV needs a header row with NAME, BIRTHDAY, GENDER, REMARKS, ACCOUNT NUMBER and test columns (PE, CBC, CHEM, URINE, STOOL, XRAY, ECG, PS, DT, HBSAG, Hba1c, Thyroid Package, Blood Typing w/ Card, FBS, LIPID PROFILE, BUA, BUN, Creatinine, SGPT, SGOT, TOTAL CHOLESTEROL, TRIGLYCERIDES).</p>
+    <button class="btn" data-act="import">Import file (replaces this company's rows)</button></div>
+  <div class="card" style="max-width:760px"><h3 style="margin-top:0">Storage — one JSON record per company</h3>
+    <p>Every company is kept separately in this browser. Use Export to save the current company as a <b>.json</b> file (backup or move to another computer); Import restores one as a new company.</p>
+    <button class="btn ghost" data-act="exportCo">Export "${esc(co.name)}" (JSON)</button>
+    <button class="btn ghost" data-act="importCo">Import company (JSON)</button>
+    <button class="btn danger" data-act="delCo">Delete this company</button></div>
+  <div class="card" style="max-width:760px"><h3 style="margin-top:0">Users (this browser)</h3>
+    <p style="font-size:12px">Sign-in accounts are stored in this browser only. Each computer or browser keeps its own list.</p>
+    <table style="max-width:420px"><thead><tr><th>Username</th><th></th></tr></thead><tbody>
+    ${usersAll().map(x => `<tr><td>${esc(x.user)}${x.user === me ? ' <i>(you)</i>' : ''}</td><td>${x.user === me ? '' : `<button class="btn danger" data-act="userDel" data-k="${esc(x.user)}">Remove</button>`}</td></tr>`).join('')}
+    </tbody></table>
+    <p style="margin-top:10px"><input id="nuName" placeholder="new username"> <input id="nuPass" type="password" placeholder="password (8+ characters)"> <button class="btn" data-act="userAdd">Add user</button></p>
+    <p><input id="cpPass" type="password" placeholder="new password for me"> <button class="btn ghost" data-act="userPw">Change my password</button></p></div>`;
+}
+// ---- rendering & navigation ----
+function renderSide() {
+  $('#nav').innerHTML = VIEWS.map(([k, l]) => `<button data-v="${k}" class="${k === view ? 'on' : ''}">${l}</button>`).join('');
+  $('#coSel').innerHTML = index().map(x => `<option value="${x.id}"${x.id === co.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('');
+  $('#foot').innerHTML = 'Signed in: <b>' + esc(sessionStorage.getItem(SESS_KEY) || '') + '</b><br>' + index().length + ' company file(s)<br><button class="btn ghost" id="bOut" style="margin-top:8px;background:#fff">Sign out</button>';
+}
+function render() {
+  renderSide();
+  $('#title').textContent = VIEWS.find(v => v[0] === view)[1] + ' · ' + (co.name || 'Untitled');
+  document.title = co.name + ' — Inventory & Billing';
+  const fn = { inventory: vInv, breakdown: vBd, billing: vBill, prices: vPrices, data: vData }[view];
+  $('#view').innerHTML = fn();
+  markDirty();
+}
+
+// edits from inputs (text on 'input', checkboxes/dates/numbers on 'change')
+function edit(el) {
+  const d = el.dataset;
+  if (d.psel !== undefined) { pkgProv = el.value; return; }
+  if (d.sigsize !== undefined) { settings.sigSize = settings.sigSize || {}; settings.sigSize[d.sigsize] = Math.min(250, Math.max(50, Number(el.value) || 100)); saveSettings(); return; }
+  if (d.hi !== undefined || d.ha !== undefined) {
+    const x = settings.hmos[+(d.hi ?? d.ha)], old = x.name, val = el.value.trim();
+    if (d.hi !== undefined) {
+      if (!val || (val !== old && settings.hmos.some(y => y.name === val))) { alert('Name is empty or already in the list.'); return render(); }
+      x.name = val; if (val !== old) renameProvider(old, val);
+    } else x.alias = val;
+    saveSettings(); return;
+  }
+  if (d.ptest !== undefined) {
+    const prov = curPkgProv(), cur = packageFor(prov).filter(id => id !== d.ptest);
+    if (el.checked) cur.push(d.ptest);
+    settings.packages = settings.packages || {}; settings.packages[prov] = cur; saveSettings(); return;
+  }
+  if (d.bt !== undefined) { if (el.checked) { co.billType = d.bt; co.billed = false; co.transmittal = ''; co.downpayment = ''; } }
+  else if (d.t !== undefined) { const p = co.patients[+d.i]; (p.t || (p.t = {}))[d.t] = el.checked ? 1 : ''; }
+  else if (d.i !== undefined && d.f) co.patients[+d.i][d.f] = d.f === 'sex' ? el.value.toUpperCase() : el.value;
+  else if (d.co) { co[d.co] = el.value; if (d.co === 'provider') { co.billed = false; co.transmittal = ''; } }
+  else if (d.pk) co.prices[d.pk] = parseFloat(el.value) || 0;
+  else if (d.set) {
+    const path = d.set.split('.'), last = path.pop();
+    const tgt = path.reduce((o, k) => o[k], settings);
+    tgt[last] = d.set === 'issuer.lines' ? el.value.split('\n') : el.value;
+    saveSettings();
+  } else return;
+  dirty = true; markDirty();
+}
+
+// Roster import = Populate step. Replaces rows, mirrors what the macro wrote to INVENTORY.
+async function importRoster(file) {
+  let r;
+  try { r = parseBook(new Uint8Array(await file.arrayBuffer())); }
+  catch (e) { console.error(e); alert('Could not read this file.\n\n' + e.message); return; }
+  if (co.patients.length && !confirm(`Replace the ${co.patients.length} rows in "${co.name}" with ${r.patients.length} rows from the file?`)) return;
+  co.patients = r.patients;
+  if (!co.provider) co.provider = majorityProvider(r.patients);
+  if (r.co) { if (r.co.name) co.name = r.co.name; if (r.co.address) co.address = r.co.address; if (r.co.date) co.date = r.co.date; }
+  if (r.prices) Object.assign(co.prices, r.prices);
+  dirty = true; render(); toast(`Imported ${r.patients.length} patients from sheet "${r.sheet}"`);
+  if (r.skipped) alert(`${r.skipped} row(s) had a SN but no name. Their names are formulas with no saved value in the file; open the file in Excel, save it, and import again.`);
+  if (!r.patients.length) alert(`Header row found in sheet "${r.sheet}" but no rows had a NAME value.`);
+}
+
+function printView() {
+  $('#pageStyle').textContent = `@page{size:A4 ${['inventory', 'breakdown'].includes(view) ? 'landscape' : 'portrait'}}`;
+  window.print();
+}
+
+// ---- events ----
+$('#nav').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (b) { view = b.dataset.v; render(); } });
+$('#coSel').addEventListener('change', e => {
+  if (dirty && !confirm('Discard unsaved changes to the current company?')) return renderSide();
+  co = openCo(e.target.value); archId = null; localStorage.setItem('ibapp.last', co.id); dirty = false; render();
+});
+$('#bNew').addEventListener('click', () => {
+  const n = prompt('Name of the new company?'); if (!n) return;
+  co = newCo(n.trim()); persist(co); dirty = false; render(); toast('Created ' + co.name);
+});
+$('#bSave').addEventListener('click', save);
+$('#bPrint').addEventListener('click', printView);
+document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); } });
+window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+$('#view').addEventListener('input', e => { if (e.target.type !== 'checkbox' && e.target.dataset.hi === undefined && e.target.dataset.ha === undefined) edit(e.target); });
+$('#view').addEventListener('change', e => {
+  edit(e.target);
+  // re-draw only for fields that hold app data; re-drawing on a plain input would swallow the next click
+  if (Object.keys(e.target.dataset).length && e.target.type !== 'text' && e.target.tagName !== 'TEXTAREA') render();
+});
+
+$('#view').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const a = b.dataset.act;
+  if (['upLogo', 'rmLogo', 'sign', 'upSig', 'clrSig', 'pkgReset'].includes(a)) return settingsAction(a, b.dataset.k);
+  if (a === 'dlSoa') return downloadSoa();
+  if (a === 'testAdd') {
+    const name = $('#ntName').value.trim(), code = $('#ntCode').value.trim().toUpperCase(), price = parseFloat($('#ntPrice').value) || 0;
+    if (!name) return alert('Enter the test name.');
+    if (!/^[A-Z][A-Z0-9]{1,9}$/.test(code)) return alert('Flag code: 2 to 10 letters or digits, starting with a letter (for example ECG2).');
+    if (!applyExtra({ name, code, price })) return alert('That flag code is already used.');
+    settings.extraTests = [...(settings.extraTests || []), { name, code, price }]; saveSettings();
+    return render();
+  }
+  if (a === 'testDel') {
+    const code = b.dataset.k;
+    if (!confirm(`Remove the test "${code}"? Its flags stay in the patient records but will no longer be shown or billed.`)) return;
+    settings.extraTests = (settings.extraTests || []).filter(x => x.code !== code); saveSettings();
+    dropExtra(code); return render();
+  }
+  if (a === 'userAdd') {
+    const u = $('#nuName').value.trim(), p = $('#nuPass').value, msg = checkNewCreds(u, p);
+    if (msg) return alert(msg);
+    if (usersAll().some(x => x.user === u)) return alert('That username already exists.');
+    return createUser(u, p).then(() => { toast('User added'); render(); });
+  }
+  if (a === 'userDel') {
+    if (b.dataset.k === sessionStorage.getItem(SESS_KEY)) return;
+    if (!confirm(`Remove user "${b.dataset.k}"?`)) return;
+    localStorage.setItem(USERS_KEY, JSON.stringify(usersAll().filter(x => x.user !== b.dataset.k))); return render();
+  }
+  if (a === 'userPw') {
+    const me = sessionStorage.getItem(SESS_KEY), p = $('#cpPass').value;
+    if (p.length < 8) return alert('Password: at least 8 characters.');
+    const list = usersAll(), rec = list.find(x => x.user === me); if (!rec) return;
+    rec.salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+    return derive(p, rec.salt).then(hh => { rec.hash = hh; localStorage.setItem(USERS_KEY, JSON.stringify(list)); toast('Password changed'); render(); });
+  }
+  if (a === 'archView') { archId = b.dataset.k; return render(); }
+  if (a === 'archBack') { archId = null; return render(); }
+  if (a === 'archDl') { const e = (co.archive || []).find(x => x.id === b.dataset.k); if (e) downloadSoa(e.transmittal, stmtHtml(e.data)); return; }
+  if (a === 'hmoAdd') {
+    const name = $('#newName').value.trim(), alias = $('#newAlias').value.trim();
+    if (!name) return alert('Enter the legal name.');
+    if (settings.hmos.some(x => x.name === name)) return alert('That provider is already in the list.');
+    settings.hmos.push({ name, alias }); saveSettings(); return render();
+  }
+  if (a === 'hmoDel') {
+    const x = settings.hmos[+b.dataset.i];
+    if (!confirm(`Remove "${x.name}" from the list? Patients already assigned to it keep the name.`)) return;
+    settings.hmos.splice(+b.dataset.i, 1); saveSettings(); return render();
+  }
+  if (a === 'add') co.patients.push({ acc: '', name: '', bd: '', sex: '', rem: '', t: {} });
+  else if (a === 'del') { if (!confirm('Delete this patient row?')) return; co.patients.splice(+b.dataset.i, 1); }
+  else if (a === 'import') $('#fileIn').click();
+  else if (a === 'importCo') $('#jsonIn').click();
+  else if (a === 'exportCo') download(co.name.replace(/\W+/g, '_') + '.json', JSON.stringify(co, null, 2));
+  else if (a === 'delCo') {
+    if (!confirm(`Delete "${co.name}" from this browser? Export it first if you need a copy.`)) return;
+    localStorage.removeItem(ck(co.id));
+    localStorage.setItem(IDX, JSON.stringify(index().filter(x => x.id !== co.id)));
+    const next = index()[0]; co = next ? openCo(next.id) : newCo('My Company');
+    if (!next) persist(co);
+    dirty = false;
+  }
+  else if (a === 'clearInv') {  // ClearInventoryData: clears B6:AI, keeps account numbers in column A
+    if (!confirm('Clear all names, birthdays, flags and remarks? Account numbers are kept.')) return;
+    co.patients = co.patients.filter(p => p.acc).map(p => ({ acc: p.acc, name: '', bd: '', sex: '', rem: '', doc: '', hmo: '', t: {} }));
+  }
+  else if (a === 'genBill') { co.billed = true; if (!co.transmittal && billing(co, packageFor).lines.length) { issueTransmittal(); archiveCurrent(); } }                      // GenerateBillingReport
+  else if (a === 'clearBill') {                                    // ClearBillingData: clears lines and downpayment
+    if (!confirm('Clear the billing statement and downpayment?')) return;
+    co.billed = false; co.downpayment = ''; co.transmittal = '';
+  }
+  if (a !== 'genBill') dirty = true; render();
+});
+
+$('#fileIn').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importRoster(f); });
+$('#jsonIn').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const c = JSON.parse(await f.text());
+    if (!Array.isArray(c.patients)) throw new Error('not a company file');
+    c.id = Date.now().toString(36); c.name = c.name || 'Imported company';
+    co = c; persist(co); dirty = false; render(); toast('Imported ' + c.name);
+  } catch (err) { alert('Could not import: ' + err.message); }
+});
+
+// ---- logo & signatures (issuer-level settings) ----
+let pendingImg = null;
+function settingsAction(a, k) {
+  if (a === 'upLogo') { pendingImg = 'logo'; $('#imgIn').click(); }
+  else if (a === 'upSig') { pendingImg = k; $('#imgIn').click(); }
+  else if (a === 'rmLogo') { settings.logo = ''; }
+  else if (a === 'clrSig') { settings.sigs[k] = ''; }
+  else if (a === 'sign') openSign(k);
+  else if (a === 'pkgReset') { if (settings.packages) delete settings.packages[k]; }
+  saveSettings(); render();
+}
+// scale an image down (keeps transparency as PNG) so it stays small in localStorage
+// Scale an image, optionally trim its blank margin, return a PNG data URL.
+// Keeps proportions; trimming removes transparent and near-white borders so the artwork fills its space.
+function processImg(src, max, trim, alphaWhite) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      const s0 = Math.min(1, 900 / Math.max(img.width, img.height));
+      let c = document.createElement('canvas');
+      c.width = Math.round(img.width * s0); c.height = Math.round(img.height * s0);
+      let cx = c.getContext('2d'); cx.drawImage(img, 0, 0, c.width, c.height);
+      if (alphaWhite) {   // make the white background transparent so a signature never covers the signature line
+        const im = cx.getImageData(0, 0, c.width, c.height), d = im.data;
+        for (let i = 0; i < d.length; i += 4) if (d[i] > 235 && d[i + 1] > 235 && d[i + 2] > 235) d[i + 3] = 0;
+        cx.putImageData(im, 0, 0);
+      }
+      if (trim) {
+        const bb = contentBox(cx, c.width, c.height);
+        if (bb) {
+          const p = 3, x = Math.max(0, bb.x0 - p), y = Math.max(0, bb.y0 - p);
+          const w = Math.min(c.width, bb.x1 + p) - x, hh = Math.min(c.height, bb.y1 + p) - y;
+          const c2 = document.createElement('canvas'); c2.width = w; c2.height = hh;
+          c2.getContext('2d').drawImage(c, x, y, w, hh, 0, 0, w, hh); c = c2;
+        }
+      }
+      const s = Math.min(1, max / Math.max(c.width, c.height));
+      const out = document.createElement('canvas');
+      out.width = Math.max(1, Math.round(c.width * s)); out.height = Math.max(1, Math.round(c.height * s));
+      out.getContext('2d').drawImage(c, 0, 0, out.width, out.height);
+      res(out.toDataURL('image/png'));
+    };
+    img.onerror = () => rej(new Error('That file is not a readable image.'));
+    img.src = src;
+  });
+}
+// bounding box of pixels that are visible and not white
+function contentBox(cx, w, h) {
+  const d = cx.getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4;
+    if (d[i + 3] < 25) continue;
+    if (d[i] > 235 && d[i + 1] > 235 && d[i + 2] > 235) continue;
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
+  return x1 < 0 ? null : { x0, y0, x1: x1 + 1, y1: y1 + 1 };
+}
+$('#imgIn').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f || !pendingImg) return;
+  try {
+    const url = URL.createObjectURL(f);
+    const data = await processImg(url, pendingImg === 'logo' ? 600 : 500, true, pendingImg !== 'logo');
+    URL.revokeObjectURL(url);
+    if (pendingImg === 'logo') { settings.logo = data; settings.logoTrimmed = true; } else settings.sigs[pendingImg] = data;
+    saveSettings(); render(); toast('Image saved');
+  } catch (err) { alert(err.message); }
+});
+// signature pad
+const sigCv = $('#sigCv'), sigCx = sigCv.getContext('2d');
+sigCx.strokeStyle = '#000'; sigCx.lineWidth = 2.5; sigCx.lineCap = 'round'; sigCx.lineJoin = 'round';
+let sigKey = null, drawing = false, inked = false;
+const sigPos = e => { const r = sigCv.getBoundingClientRect(); return [(e.clientX - r.left) * sigCv.width / r.width, (e.clientY - r.top) * sigCv.height / r.height]; };
+function openSign(k) {
+  sigKey = k; $('#sigT').textContent = 'Sign: ' + (k === 'prepared' ? 'Prepared By' : 'Noted By');
+  sigCx.clearRect(0, 0, sigCv.width, sigCv.height); inked = false; $('#sigDlg').showModal();
+}
+sigCv.addEventListener('pointerdown', e => { drawing = true; inked = true; sigCv.setPointerCapture(e.pointerId); const [x, y] = sigPos(e); sigCx.beginPath(); sigCx.moveTo(x, y); });
+sigCv.addEventListener('pointermove', e => { if (!drawing) return; const [x, y] = sigPos(e); sigCx.lineTo(x, y); sigCx.stroke(); });
+['pointerup', 'pointercancel'].forEach(t => sigCv.addEventListener(t, () => drawing = false));
+$('#sigClr').addEventListener('click', () => { sigCx.clearRect(0, 0, sigCv.width, sigCv.height); inked = false; });
+$('#sigNo').addEventListener('click', () => $('#sigDlg').close());
+$('#sigOk').addEventListener('click', () => {
+  if (!inked) return alert('Draw a signature first.');
+  processImg(sigCv.toDataURL('image/png'), 500, true, true).then(d => { settings.sigs[sigKey] = d; saveSettings(); $('#sigDlg').close(); render(); toast('Signature saved'); });
+});
+
+// Issue the next transmittal number. Company-billed and each HMO have separate running sequences.
+//   company: YYYYMMDD-CODE-NNN          e.g. 20260709-CHEM-001
+//   HMO:     YYYYMMDD-CODE-HMO-NNN      e.g. 20260709-CHEM-MAXI-001
+// Numbers are never reused; clearing a billing keeps the sequence.
+function issueTransmittal() {
+  if (co.billType === 'hmo' && !co.provider) return;
+  const ymd = (co.date || today()).replace(/-/g, '');
+  const base = co.code || companyCode(co.name);
+  co.seqs = co.seqs || { company: co.seq || 0, hmo: {} };
+  if (co.billType === 'hmo') {
+    const x = (settings.hmos || []).find(x => x.name === co.provider);
+    const n = (co.seqs.hmo[co.provider] || 0) + 1; co.seqs.hmo[co.provider] = n;
+    co.transmittal = `${ymd}-${base}-${companyCode(x && x.alias ? x.alias : co.provider)}-${String(n).padStart(3, '0')}`;
+  } else {
+    const n = (co.seqs.company || 0) + 1; co.seqs.company = n;
+    co.transmittal = `${ymd}-${base}-${String(n).padStart(3, '0')}`;
+  }
+}
+// Download the statement as a standalone HTML file (logo, letterhead, signatures and print layout included).
+function downloadSoa(name, html) {
+  const st = html || (document.querySelector('.stmt') || {}).outerHTML; if (!st) return;
+  const css = document.querySelector('head style').textContent, title = name || co.transmittal || 'Statement of Account';
+  const doc = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
+<style>${css}</style></head><body style="background:#fff;padding:12px">${st}</body></html>`;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([doc], { type: 'text/html' })); a.download = title.replace(/[^\w-]+/g, '_') + '.html'; a.click();
+}
+// collapsible block; its open/closed state is remembered
+function coll(id, title, body) {
+  const open = !((settings.collapsed || {})[id]);
+  return `<details class="card" data-sec="${id}"${open ? ' open' : ''}><summary>${title}</summary><div class="cbody">${body}</div></details>`;
+}
+$('#view').addEventListener('toggle', e => {
+  const id = e.target.dataset && e.target.dataset.sec; if (!id) return;
+  settings.collapsed = settings.collapsed || {}; settings.collapsed[id] = !e.target.open; saveSettings();
+}, true);
+
+// ---- sign-in (browser-level gate; passwords stored as salted PBKDF2 hashes) ----
+const USERS_KEY = 'ibapp.users', SESS_KEY = 'ibapp.user';
+const usersAll = () => JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+const b64 = bytes => btoa(String.fromCharCode(...bytes));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function derive(pw, saltB64) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: unb64(saltB64), iterations: 210000, hash: 'SHA-256' }, key, 256);
+  return b64(new Uint8Array(bits));
+}
+async function createUser(u, pw) {
+  const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+  const list = usersAll(); list.push({ user: u, salt, hash: await derive(pw, salt) });
+  localStorage.setItem(USERS_KEY, JSON.stringify(list));
+}
+function checkNewCreds(u, pw) {
+  if (!/^[A-Za-z0-9._-]{3,}$/.test(u)) return 'Username: at least 3 letters, numbers, dot, dash or underscore.';
+  if (pw.length < 8) return 'Password: at least 8 characters.';
+  return '';
+}
+function showAuth() {
+  const setup = usersAll().length === 0, sess = sessionStorage.getItem(SESS_KEY);
+  if (!setup && sess && usersAll().some(x => x.user === sess)) { $('#login').style.display = 'none'; return; }
+  $('#login').style.display = 'flex';
+  $('#loginTitle').textContent = setup ? 'Create the administrator account' : 'Sign in';
+  $('#loginNote').textContent = setup ? 'First run on this browser. This account can add other users.' : '';
+  $('#lBtn').textContent = setup ? 'Create account' : 'Sign in';
+}
+$('#loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const u = $('#lUser').value.trim(), p = $('#lPass').value; $('#lErr').textContent = '';
+  if (usersAll().length === 0) {
+    const msg = checkNewCreds(u, p); if (msg) { $('#lErr').textContent = msg; return; }
+    await createUser(u, p); sessionStorage.setItem(SESS_KEY, u); return showAuth();
+  }
+  const rec = usersAll().find(x => x.user === u);
+  if (!rec || (await derive(p, rec.salt)) !== rec.hash) { $('#lErr').textContent = 'Wrong username or password.'; return; }
+  sessionStorage.setItem(SESS_KEY, u); showAuth();
+});
+document.addEventListener('click', e => {
+  if (e.target.id === 'bOut') { sessionStorage.removeItem(SESS_KEY); location.reload(); }
+});
+
+// tests added by the user (Prices & Letterhead). They join the same arrays as the built-in tests.
+function applyExtra(x) {
+  const id = 'X' + x.code;
+  if (TESTS.some(t => t[0] === id || t[3] === x.code)) return false;
+  const t = [id, x.name, Number(x.price) || 0, x.code];
+  TESTS.push(t); FLAGS.push(x.code); LINE_TESTS.push(t); ALIAS[x.name.toUpperCase()] = x.code;
+  return true;
+}
+function dropExtra(code) {
+  const i = TESTS.findIndex(t => t[3] === code); if (i < 0) return;
+  const t = TESTS[i];
+  TESTS.splice(i, 1); FLAGS.splice(FLAGS.indexOf(code), 1);
+  const j = LINE_TESTS.indexOf(t); if (j >= 0) LINE_TESTS.splice(j, 1);
+  delete ALIAS[t[1].toUpperCase()];
+}
+settings.extraTests.forEach(applyExtra);
+
+// ---- boot ----
+{
+  const ix = index();
+  co = openCo(localStorage.getItem('ibapp.last')) || (ix[0] && openCo(ix[0].id));
+  if (!co) { co = newCo('My Company'); persist(co); }
+  render();
+  showAuth();
+  if (settings.logo && !settings.logoTrimmed) processImg(settings.logo, 600, true)
+    .then(d => { settings.logo = d; settings.logoTrimmed = true; saveSettings(); render(); }).catch(() => {});
+  if (!settings.sigClean) {
+    const ks = ['prepared', 'noted'].filter(k => settings.sigs[k]);
+    Promise.all(ks.map(k => processImg(settings.sigs[k], 500, true, true).then(d => { settings.sigs[k] = d; })))
+      .then(() => { settings.sigClean = true; saveSettings(); render(); }).catch(() => {});
+    if (!ks.length) { settings.sigClean = true; saveSettings(); }
+  }
+}
+</script>
+</body>
+</html>
