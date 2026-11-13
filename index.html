@@ -177,11 +177,13 @@ function billing(c, packageOf) {
   const hmo = c.billType === 'hmo', pkgOf = packageOf || (() => HMO_PKG), prov = (c.provider || '').trim();
   const pkg = pkgOf(prov), lines = []; let total = 0;
   if (!(hmo && !prov)) c.patients.forEach(p => {
+    const member = p.mem === true;
+    if (hmo ? !member : p.co === false) return;      // HMO statement: members. Company statement: company-billed patients.
     const parts = []; let amt = 0;
     LINE_TESTS.forEach(t => {
       const pr = price(c, t), inPkg = pkg.includes(t[0]);
       if (!bdHas(p, t) || !(pr > 0)) return;
-      if (hmo ? !inPkg : (prov && inPkg)) return;
+      if (hmo ? !inPkg : (member && prov && inPkg)) return;   // a member's package tests belong to the HMO
       parts.push(t[1]); amt += pr;
     });
     if (!parts.length) return;
@@ -427,8 +429,14 @@ function majorityProvider(patients) {
   const top = Object.entries(n).sort((a, b) => b[1] - a[1])[0];
   return top ? top[0] : '';
 }
+function nextSn(c) { return Math.max(0, ...((c || co).patients || []).map(p => p.sn || 0)) + 1; }
 function migrateCo(c) {
   if (!c.archive) c.archive = [];
+  if (!c.snMigrated) { (c.patients || []).forEach((p, i) => { if (!p.sn) p.sn = i + 1; }); c.snMigrated = true; }
+  if (!c.membersMigrated) {
+    (c.patients || []).forEach(p => { if (p.mem === undefined) p.mem = !!(p.hmo || '').trim(); if (p.co === undefined) p.co = p.inc === false ? false : true; });
+    c.membersMigrated = true;
+  }
   if (!c.providerMigrated) { if (!c.provider) c.provider = majorityProvider(c.patients); c.providerMigrated = true; }
   return c;
 }
@@ -474,11 +482,19 @@ function vInv() {
     <button class="btn" data-act="add">+ Add patient</button>
     <button class="btn ghost" data-act="import">Import CSV / Excel</button>
     <button class="btn ghost" data-act="clearInv">Clear Inventory</button>
+    <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <span>HMO members, SN</span> <input id="snH1" type="number" min="1" style="width:70px" placeholder="from"> to <input id="snH2" type="number" min="1" style="width:70px" placeholder="to">
+      <button class="btn ghost" data-act="snHmo">Set as HMO members</button>
+      <span style="margin-left:14px">Non-members, SN</span> <input id="snC1" type="number" min="1" style="width:70px" placeholder="from"> to <input id="snC2" type="number" min="1" style="width:70px" placeholder="to">
+      <button class="btn ghost" data-act="snCo">Set as non-members</button>
+    </div>
   </div>
-  <div class="tw"><table><thead><tr><th>#</th><th>Account No.</th><th>Name</th><th>Birthday</th><th>Age</th><th>Sex</th>
+  <div class="tw"><table><thead><tr><th>#</th><th title="Tick = HMO member. Their package is billed to the HMO."><label style="font-weight:normal"><input type="checkbox" data-all="mem" ${co.patients.length && co.patients.every(p => p.mem === true) ? 'checked' : ''}> HMO</label></th><th title="Tick = billed to the company (default)."><label style="font-weight:normal"><input type="checkbox" data-all="cob" ${co.patients.length && co.patients.every(p => p.co !== false) ? 'checked' : ''}> Company</label></th><th>Account No.</th><th>Name</th><th>Birthday</th><th>Age</th><th>Sex</th>
     ${FLAGS.map(k => `<th>${k}</th>`).join('')}<th>Remarks</th>${hasDoc ? '<th>Physician</th>' : ''}<th class="noprint"></th></tr></thead><tbody>`;
   co.patients.forEach((p, i) => {
-    h += `<tr><td>${i + 1}</td>
+    h += `<tr><td>${p.sn ?? i + 1}</td>
+      <td class="c"><input type="checkbox" data-i="${i}" data-mem="1" ${p.mem === true ? 'checked' : ''}></td>
+      <td class="c"><input type="checkbox" data-i="${i}" data-cob="1" ${p.co === false ? '' : 'checked'}></td>
       <td><input type="text" data-i="${i}" data-f="acc" value="${esc(p.acc)}"></td>
       <td><input type="text" data-i="${i}" data-f="name" value="${esc(p.name)}" style="min-width:210px"></td>
       <td><input type="date" data-i="${i}" data-f="bd" value="${esc(p.bd || '')}"></td>
@@ -490,7 +506,7 @@ function vInv() {
       <td class="noprint"><button class="btn danger" data-act="del" data-i="${i}">×</button></td></tr>`;
   });
   const cnt = FLAGS.map(k => co.patients.filter(p => flag(p.t?.[k])).length);
-  h += `</tbody><tfoot><tr class="tot"><td colspan="6">Count</td>${cnt.map(c => `<td class="c">${c}</td>`).join('')}<td colspan="${hasDoc ? 3 : 2}"></td></tr></tfoot></table></div>`;
+  h += `</tbody><tfoot><tr class="tot"><td colspan="8">Count</td>${cnt.map(c => `<td class="c">${c}</td>`).join('')}<td colspan="${hasDoc ? 3 : 2}"></td></tr></tfoot></table></div>`;
   return h;
 }
 
@@ -502,7 +518,7 @@ function vBd() {
     ${TESTS.map(t => `<th>${esc(t[1])}</th>`).join('')}</tr></thead><tbody>
     <tr class="tot"><td colspan="5">BILL PRICE</td>${TESTS.map(t => `<td class="c">${price(co, t) || ''}</td>`).join('')}</tr>`;
   co.patients.forEach((p, i) => {
-    h += `<tr><td>${i + 1}</td><td>${esc(p.name)}</td><td>${fmtD(p.bd)}</td><td class="c">${age(p.bd, co.date)}</td><td class="c">${esc(p.sex)}</td>
+    h += `<tr><td>${p.sn ?? i + 1}</td><td>${esc(p.name)}</td><td>${fmtD(p.bd)}</td><td class="c">${age(p.bd, co.date)}</td><td class="c">${esc(p.sex)}</td>
       ${TESTS.map(t => `<td class="c">${bdHas(p, t) ? 1 : ''}</td>`).join('')}</tr>`;
   });
   const cnt = TESTS.map(t => co.patients.filter(p => bdHas(p, t)).length);
@@ -512,10 +528,12 @@ function vBd() {
 
 let archId = null;   // archived statement being viewed (null = current billing)
 const fmtDT = iso => iso ? new Date(iso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+// who the current statement is billed to
+function billedTo() { return co.billType === 'hmo' ? hmoLabel(co.provider) : co.name; }
 // everything a statement shows, taken from the current billing
 function draftData() {
-  const b = billing(co, packageFor), isHmo = (co.billType || 'company') === 'hmo';
-  return { client: co.name, billTo: isHmo ? hmoLabel(co.provider) : co.name, address: co.address, transmittal: co.transmittal || '',
+  const b = billing(co, packageFor);
+  return { client: co.name, billTo: billedTo(), address: co.address, transmittal: co.transmittal || '',
     apeDate: co.date, dueDate: dueDate(co.date), lines: b.lines, total: b.total, hasDp: b.hasDp, dp: b.dp, net: b.net,
     note: settings.issuer.note, prepared: [...settings.prepared], noted: [...settings.noted] };
 }
@@ -559,7 +577,7 @@ function archListHtml() {
   if (!list.length) return `<div class="card noprint" style="margin-top:14px">No archived statements yet. Each statement is saved here the first time you generate it.</div>`;
   return `<div class="card noprint" style="margin-top:14px"><h3 style="margin-top:0">Archived statements (read-only)</h3>
     <div class="tw" style="max-height:340px"><table><thead><tr><th>Transmittal</th><th>Type</th><th>Billed to</th><th>APE date</th><th>Issued</th><th style="text-align:right">Net</th><th></th></tr></thead><tbody>
-    ${list.map(e => `<tr><td>${esc(e.transmittal)}</td><td>${e.type === 'hmo' ? 'HMO-Billed' : 'Company-Billed'}</td><td>${esc(e.data.billTo)}</td><td>${fmtD(e.data.apeDate)}</td><td>${fmtDT(e.issued)}</td><td style="text-align:right">${fmt(e.data.net)}</td>
+    ${list.map(e => `<tr><td>${esc(e.transmittal)}</td><td>${e.type === 'hmo' ? 'HMO-Billed' : e.type === 'loa' ? 'LOA' : 'Company-Billed'}</td><td>${esc(e.data.billTo)}</td><td>${fmtD(e.data.apeDate)}</td><td>${fmtDT(e.issued)}</td><td style="text-align:right">${fmt(e.data.net)}</td>
       <td class="noprint"><button class="btn ghost" data-act="archView" data-k="${esc(e.id)}">View</button> <button class="btn ghost" data-act="archDl" data-k="${esc(e.id)}">Download</button></td></tr>`).join('')}
     </tbody></table></div></div>`;
 }
@@ -571,16 +589,17 @@ function vBill() {
         <button class="btn" data-act="archDl" data-k="${esc(e.id)}">Download</button></div>` + stmtHtml(e.data) + archListHtml();
     archId = null;
   }
-  const isHmo = (co.billType || 'company') === 'hmo';
+  const bt = co.billType || 'company';
+  const members = co.patients.filter(p => p.mem === true).length, nonMembers = co.patients.length - members;
   let h = `<div class="card noprint"><div class="grid" style="grid-template-columns:150px 1fr">
       <label>Billing type</label><div>
-        <label style="margin-right:18px"><input type="checkbox" data-bt="company" ${isHmo ? '' : 'checked'}> Company-Billed</label>
-        <label><input type="checkbox" data-bt="hmo" ${isHmo ? 'checked' : ''}> HMO-Billed</label></div>
+        <label style="margin-right:18px"><input type="checkbox" data-bt="company" ${bt === 'company' ? 'checked' : ''}> Company-Billed</label>
+        <label><input type="checkbox" data-bt="hmo" ${bt === 'hmo' ? 'checked' : ''}> HMO-Billed</label></div>
       <label>Provider</label><div>${co.provider ? esc(hmoLabel(co.provider)) : '<i>Not set. Choose it in the company block on the Inventory tab.</i>'}</div>
       <label>Downpayment</label><input type="number" step="0.01" data-co="downpayment" value="${esc(co.downpayment)}">
       <label>Transmittal No.</label><input data-co="transmittal" value="${esc(co.transmittal || '')}" placeholder="Issued on Generate Billing">
     </div>
-    <p style="font-size:12px;margin:8px 0 0">${pkgNote()}</p></div>
+    <p style="font-size:12px;margin:8px 0 0">${members} HMO member(s) and ${nonMembers} non-member(s) on the Inventory tab. ${pkgNote()}</p></div>
     <div class="noprint" style="margin-bottom:10px">
       <button class="btn" data-act="genBill">Generate Billing</button>
       <button class="btn ghost" data-act="clearBill">Clear Billing</button>
@@ -588,9 +607,9 @@ function vBill() {
       <span> Logo, letterhead and signatures are set under Prices &amp; Letterhead. Print uses the statement only.</span></div>`;
   if (!co.billed) return h + `<div class="card noprint">Billing is empty. Click <b>Generate Billing</b> to build the statement from the Inventory tab.</div>` + archListHtml();
   const b = billing(co, packageFor);
-  if (!b.lines.length) return h + `<div class="card noprint">${isHmo && !co.provider ? 'Set the provider in the company block on the Inventory tab first.'
-      : isHmo ? `No patients have a package test (${esc(pkgLabels(co.provider))}). Check the flags on the Inventory tab.`
-      : 'No billable tests for this selection. Check the flags on the Inventory tab.'}</div>` + archListHtml();
+  if (!b.lines.length) return h + `<div class="card noprint">${bt === 'hmo' && !co.provider ? 'Set the provider in the company block on the Inventory tab first.'
+      : bt === 'hmo' ? `No HMO members have a package test (${esc(pkgLabels(co.provider))}). Tick HMO on the Inventory tab for members.`
+      : 'No billable tests for this selection. Check the flags and the Company ticks on the Inventory tab.'}</div>` + archListHtml();
   return h + stmtHtml(draftData()) + archListHtml();
 }
 
@@ -686,6 +705,9 @@ function edit(el) {
     if (el.checked) cur.push(d.ptest);
     settings.packages = settings.packages || {}; settings.packages[prov] = cur; saveSettings(); return;
   }
+  if (d.all !== undefined) { co.patients.forEach(p => { if (d.all === 'mem') p.mem = el.checked; else p.co = el.checked; }); dirty = true; markDirty(); return; }
+  if (d.mem !== undefined) { co.patients[+d.i].mem = el.checked; dirty = true; markDirty(); return; }
+  if (d.cob !== undefined) { co.patients[+d.i].co = el.checked; dirty = true; markDirty(); return; }
   if (d.bt !== undefined) { if (el.checked) { co.billType = d.bt; co.billed = false; co.transmittal = ''; co.downpayment = ''; } }
   else if (d.t !== undefined) { const p = co.patients[+d.i]; (p.t || (p.t = {}))[d.t] = el.checked ? 1 : ''; }
   else if (d.i !== undefined && d.f) co.patients[+d.i][d.f] = d.f === 'sex' ? el.value.toUpperCase() : el.value;
@@ -708,6 +730,7 @@ async function importRoster(file) {
   if (co.patients.length && !confirm(`Replace the ${co.patients.length} rows in "${co.name}" with ${r.patients.length} rows from the file?`)) return;
   co.patients = r.patients;
   if (!co.provider) co.provider = majorityProvider(r.patients);
+  co.patients.forEach((p, i) => { p.mem = !!(p.hmo || '').trim(); p.co = true; p.sn = i + 1; });
   if (r.co) { if (r.co.name) co.name = r.co.name; if (r.co.address) co.address = r.co.address; if (r.co.date) co.date = r.co.date; }
   if (r.prices) Object.assign(co.prices, r.prices);
   dirty = true; render(); toast(`Imported ${r.patients.length} patients from sheet "${r.sheet}"`);
@@ -747,6 +770,16 @@ $('#view').addEventListener('click', e => {
   const a = b.dataset.act;
   if (['upLogo', 'rmLogo', 'sign', 'upSig', 'clrSig', 'pkgReset'].includes(a)) return settingsAction(a, b.dataset.k);
   if (a === 'dlSoa') return downloadSoa();
+  if (a === 'snHmo' || a === 'snCo') {
+    const lo = +$(a === 'snHmo' ? '#snH1' : '#snC1').value, hi = +$(a === 'snHmo' ? '#snH2' : '#snC2').value;
+    if (!(lo > 0 && hi >= lo)) return alert('Enter the first and last serial numbers (the first must not be larger than the last).');
+    co.patients.forEach(p => {
+      if (p.sn < lo || p.sn > hi) return;
+      if (a === 'snHmo') { p.mem = true; p.co = true; }     // HMO member: package to the HMO, the rest to the company
+      else { p.mem = false; p.co = true; }                  // non-member: company pays everything
+    });
+    dirty = true; return render();
+  }
   if (a === 'testAdd') {
     const name = $('#ntName').value.trim(), code = $('#ntCode').value.trim().toUpperCase(), price = parseFloat($('#ntPrice').value) || 0;
     if (!name) return alert('Enter the test name.');
@@ -793,7 +826,7 @@ $('#view').addEventListener('click', e => {
     if (!confirm(`Remove "${x.name}" from the list? Patients already assigned to it keep the name.`)) return;
     settings.hmos.splice(+b.dataset.i, 1); saveSettings(); return render();
   }
-  if (a === 'add') co.patients.push({ acc: '', name: '', bd: '', sex: '', rem: '', t: {} });
+  if (a === 'add') co.patients.push({ sn: nextSn(), acc: '', name: '', bd: '', sex: '', rem: '', t: {} });
   else if (a === 'del') { if (!confirm('Delete this patient row?')) return; co.patients.splice(+b.dataset.i, 1); }
   else if (a === 'import') $('#fileIn').click();
   else if (a === 'importCo') $('#jsonIn').click();
@@ -808,7 +841,7 @@ $('#view').addEventListener('click', e => {
   }
   else if (a === 'clearInv') {  // ClearInventoryData: clears B6:AI, keeps account numbers in column A
     if (!confirm('Clear all names, birthdays, flags and remarks? Account numbers are kept.')) return;
-    co.patients = co.patients.filter(p => p.acc).map(p => ({ acc: p.acc, name: '', bd: '', sex: '', rem: '', doc: '', hmo: '', t: {} }));
+    co.patients = co.patients.filter(p => p.acc).map(p => ({ sn: p.sn, acc: p.acc, name: '', bd: '', sex: '', rem: '', doc: '', hmo: '', t: {} }));
   }
   else if (a === 'genBill') { co.billed = true; if (!co.transmittal && billing(co, packageFor).lines.length) { issueTransmittal(); archiveCurrent(); } }                      // GenerateBillingReport
   else if (a === 'clearBill') {                                    // ClearBillingData: clears lines and downpayment
@@ -934,6 +967,7 @@ function issueTransmittal() {
     co.transmittal = `${ymd}-${base}-${String(n).padStart(3, '0')}`;
   }
 }
+
 // Download the statement as a standalone HTML file (logo, letterhead, signatures and print layout included).
 function downloadSoa(name, html) {
   const st = html || (document.querySelector('.stmt') || {}).outerHTML; if (!st) return;
