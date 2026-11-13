@@ -155,6 +155,8 @@ const ALIAS = {'CHEMISTRY PACKAGE':'CHEM','PAP SMEAR':'PS','DRUG TEST':'DT','HBS
  'TOTAL CHOLESTEROL':'TCHOL','TRIGLYCERIDES':'TRIG','BASIC 5':'PE'};
 
 const flag = v => v === 1 || String(v ?? '').trim() === '1';
+// marks accepted from an imported roster: 1, X, ✓, yes, Y, and similar
+const isMark = v => v === 1 || /^(1|x|✓|✔|✗✓|y|yes|true|\/|\*|•|done)$/i.test(String(v ?? '').trim());
 const bdHas = (p, t) => { const f = k => flag(p.t?.[k]); return t[0] === 'B5' ? BUNDLE.some(f) : f(t[3]); };
 const price = (c, t) => Number(c.prices?.[t[0]] ?? t[2]) || 0;
 
@@ -219,6 +221,9 @@ function isoDate(v) {
   else {
     const s = String(v).trim();
     if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    const MON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+    const rng = s.match(/^([A-Za-z]+)\.?\s+(\d{1,2})(?:\s*[-–]\s*\d{1,2})?,?\s*(\d{4})$/);   // "NOVEMBER 4-6, 2026": first day
+    if (rng && MON[rng[1].slice(0, 3).toLowerCase()]) return `${rng[3]}-${String(MON[rng[1].slice(0, 3).toLowerCase()]).padStart(2, '0')}-${String(rng[2]).padStart(2, '0')}`;
     d = new Date(s); if (isNaN(d)) return '';
   }
   return isoOf(d);
@@ -246,7 +251,8 @@ function parseBook(bytes) {
     const first = grid(sheetNames[0]).slice(0, 3).map(r => r.filter(c => c !== '').join(' | ')).join(' / ');
     throw new Error(`No name column (NAME or Full Name) was found in any sheet (${sheetNames.join(', ')}). First rows: ${first || 'empty'}`);
   }
-  const out = { patients: [], prices: null, co: null, sheet: sName };
+  const out = { patients: [], prices: null, co: null, sheet: sName, unmapped: [], marks: 0 };
+  const unmapped = [];
   // company block: label cells such as COMPANY / ADDRESS / DATE above the header
   rows.slice(0, hdrIdx).forEach((r, ri) => {
     r.forEach((c, ci) => {
@@ -274,18 +280,21 @@ function parseBook(bytes) {
   }
   // column map from the header row
   const col = {};
+  const put = (key, i) => { if (col[key] === undefined) col[key] = i; };   // first occurrence wins
   rows[hdrIdx].forEach((h, i) => {
     const H = norm(h);
-    if (isNameHdr(H)) col.name = i;
-    else if (H === 'SN') col.sn = i;
-    else if (['ACCOUNT NUMBER', 'ACCOUNT NO.', 'ACCOUNT NO', 'ACCOUNT'].includes(H)) col.acc = i;
-    else if (['BIRTHDAY', 'BIRTH DATE', 'BIRTHDATE', 'DOB'].includes(H)) col.bd = i;
-    else if (['GENDER', 'SEX'].includes(H)) col.sex = i;
-    else if (['HMO', 'HMO NAME', 'PROVIDER', 'LIFE INSURANCE'].includes(H)) col.hmo = i;
-    else if (H === 'REMARKS') col.rem = i;
-    else if (H === '') { if (col.rem !== undefined && col.doc === undefined && i > col.rem) col.doc = i; }
-    else { const k = ALIAS[H] || FLAGS.find(f => f === H); if (k) col['t_' + k] = i; }
+    if (isNameHdr(H)) put('name', i);
+    else if (H === 'SN') put('sn', i);
+    else if (['ACCOUNT NUMBER', 'ACCOUNT NO.', 'ACCOUNT NO', 'ACCOUNT'].includes(H)) put('acc', i);
+    else if (['BIRTHDAY', 'BIRTH DATE', 'BIRTHDATE', 'DOB'].includes(H)) put('bd', i);
+    else if (['GENDER', 'SEX'].includes(H)) put('sex', i);
+    else if (['HMO', 'HMO NAME', 'PROVIDER', 'LIFE INSURANCE'].includes(H)) put('hmo', i);
+    else if (H === 'REMARKS') put('rem', i);
+    else if (H === '') { if (col.rem !== undefined && col.doc === undefined && i > col.rem) put('doc', i); }
+    else if (['AGE', 'SN', 'NO', 'NO.', '#'].includes(H)) { /* not a test */ }
+    else { const k = ALIAS[H] || FLAGS.find(f => f === H); if (k) put('t_' + k, i); else if (H) unmapped.push(str(h)); }
   });
+  out.unmapped = [...new Set(unmapped)];
   rows.slice(hdrIdx + 1).forEach(r => {
     const name = str(r[col.name]);
     if (!name) { if (col.sn !== undefined && str(r[col.sn]) !== '') out.skipped = (out.skipped || 0) + 1; return; }
@@ -293,7 +302,7 @@ function parseBook(bytes) {
     FLAGS.forEach(k => {
       if (col['t_' + k] === undefined) return;
       const v = r[col['t_' + k]];
-      if (v !== '' && v != null) t[k] = flag(v) ? 1 : str(v);   // keep non-1 codes such as "W"
+      if (v !== '' && v != null) { if (isMark(v)) { t[k] = 1; out.marks++; } else t[k] = str(v); }   // other codes such as "W" are kept as text
     });
     out.patients.push({ acc: str(r[col.acc]), name, bd: isoDate(r[col.bd]), sex: str(r[col.sex]).toUpperCase().slice(0, 1), rem: str(r[col.rem]), hmo: col.hmo !== undefined ? str(r[col.hmo]) : '', doc: col.doc !== undefined ? str(r[col.doc]) : '', t });
   });
@@ -733,7 +742,8 @@ async function importRoster(file) {
   co.patients.forEach((p, i) => { p.mem = !!(p.hmo || '').trim(); p.co = true; p.sn = i + 1; });
   if (r.co) { if (r.co.name) co.name = r.co.name; if (r.co.address) co.address = r.co.address; if (r.co.date) co.date = r.co.date; }
   if (r.prices) Object.assign(co.prices, r.prices);
-  dirty = true; render(); toast(`Imported ${r.patients.length} patients from sheet "${r.sheet}"`);
+  dirty = true; render(); toast(`Imported ${r.patients.length} patients, ${r.marks} test marks, from "${r.sheet}"`);
+  if (r.unmapped.length) alert(`These columns were not recognised as tests and were skipped:\n\n${r.unmapped.join(", ")}\n\nRename a test column to its test name or flag code (see Prices & Letterhead) and import again.`);
   if (r.skipped) alert(`${r.skipped} row(s) had a SN but no name. Their names are formulas with no saved value in the file; open the file in Excel, save it, and import again.`);
   if (!r.patients.length) alert(`Header row found in sheet "${r.sheet}" but no rows had a NAME value.`);
 }
