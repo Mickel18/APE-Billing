@@ -78,9 +78,44 @@ td.c{text-align:center}
   table{font-size:10px}
   tr{break-inside:avoid}
 }
+
+/* sign-in screen (Firebase) */
+.auth-overlay{position:fixed;inset:0;background:#96C93D;display:flex;align-items:center;justify-content:center;z-index:9999}
+.auth-card{width:400px;max-width:90%;background:#fff;padding:30px;border-radius:16px;box-shadow:0 8px 25px rgba(0,0,0,.2)}
+.auth-title{text-align:center;color:#2f5a0e;margin:0 0 4px}
+.auth-sub{text-align:center;color:#666;margin:0 0 18px;font-weight:normal}
+.auth-input{width:100%;padding:12px;margin-bottom:12px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;font:inherit}
+.auth-btn{width:100%;padding:12px;border:none;border-radius:6px;color:#111;background:#96C93D;cursor:pointer;margin-bottom:10px;font:inherit;font-weight:bold}
+.auth-btn:hover{background:#7DA92D}
+.google-btn{background:#fff;border:1px solid #ccc}
+.auth-msg{color:#a11b1b;font-size:12px;min-height:16px;text-align:center;margin:0 0 8px}
 </style>
 </head>
 <body>
+<!-- sign-in screen (Firebase Authentication) -->
+<div id="auth-container" class="auth-overlay" style="display:flex">
+  <div class="auth-card">
+    <div id="login-form">
+      <h2 class="auth-title">APE-Billing</h2>
+      <h3 class="auth-sub">Sign in</h3>
+      <input type="email" id="login-email" placeholder="Email" class="auth-input" autocomplete="username">
+      <input type="password" id="login-pass" placeholder="Password" class="auth-input" autocomplete="current-password">
+      <p id="login-msg" class="auth-msg"></p>
+      <button onclick="signIn()" class="auth-btn">Sign in</button>
+      <button onclick="signInWithGoogle()" class="auth-btn google-btn">Sign in with Google</button>
+      <p style="text-align:center">No account? <a href="#" onclick="showSignup();return false;">Create account</a></p>
+    </div>
+    <div id="signup-form" style="display:none">
+      <h2 class="auth-title">APE-Billing</h2>
+      <h3 class="auth-sub">Create account</h3>
+      <input type="email" id="signup-email" placeholder="Email" class="auth-input" autocomplete="username">
+      <input type="password" id="signup-pass" placeholder="Password (at least 6 characters)" class="auth-input" autocomplete="new-password">
+      <p id="signup-msg" class="auth-msg"></p>
+      <button onclick="signUp()" class="auth-btn">Create account</button>
+      <p style="text-align:center">Already have an account? <a href="#" onclick="showLogin();return false;">Sign in</a></p>
+    </div>
+  </div>
+</div>
 <aside class="side">
   <div class="brand"><div class="clinic">Exact Check Diagnostic Center</div><div class="dept">Medical Field Operations</div></div>
   <select id="coSel" title="Company"></select>
@@ -667,7 +702,8 @@ function vData() {
 function renderSide() {
   $('#nav').innerHTML = VIEWS.map(([k, l]) => `<button data-v="${k}" class="${k === view ? 'on' : ''}">${l}</button>`).join('');
   $('#coSel').innerHTML = index().map(x => `<option value="${x.id}"${x.id === co.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('');
-  $('#foot').innerHTML = 'Saved in this browser.<br>' + index().length + ' company file(s)';
+  $('#foot').innerHTML = 'Saved in this browser.<br>' + index().length + ' company file(s)' +
+    '<br><button class="btn ghost" id="bOut" style="margin-top:8px;background:#fff">Sign out</button>';
 }
 function render() {
   renderSide();
@@ -987,14 +1023,14 @@ $('#view').addEventListener('toggle', e => {
     if (!ks.length) { settings.sigClean = true; saveSettings(); }
   }
 }
-<!-- FIREBASE -->
+</script>
+
+<!-- Firebase Authentication (sign-in only; company data stays in this browser) -->
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
-
 <script>
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
+  apiKey: "PASTE_YOUR_WEB_API_KEY",
   authDomain: "ape-billing.firebaseapp.com",
   projectId: "ape-billing",
   storageBucket: "ape-billing.firebasestorage.app",
@@ -1003,235 +1039,58 @@ const firebaseConfig = {
   measurementId: "G-R5XN6Y76LB"
 };
 
-firebase.initializeApp(firebaseConfig);
+const AUTH_MESSAGES = {
+  'auth/invalid-email': 'That email address is not valid.',
+  'auth/email-already-in-use': 'An account with this email already exists. Sign in instead.',
+  'auth/weak-password': 'Password must be at least 6 characters.',
+  'auth/missing-password': 'Enter your password.',
+  'auth/invalid-credential': 'Wrong email or password.',
+  'auth/wrong-password': 'Wrong email or password.',
+  'auth/user-not-found': 'Wrong email or password.',
+  'auth/too-many-requests': 'Too many attempts. Wait a few minutes and try again.',
+  'auth/unauthorized-domain': 'This website address is not allowed in Firebase. Add mickel18.github.io under Authentication → Settings → Authorized domains.',
+  'auth/operation-not-allowed': 'This sign-in method is turned off in Firebase (Authentication → Sign-in method).',
+  'auth/popup-closed-by-user': 'The Google sign-in window was closed.',
+  'auth/network-request-failed': 'No internet connection, or Firebase could not be reached.'
+};
+function authError(err) { return AUTH_MESSAGES[err.code] || err.message; }
+function setMsg(id, text) { document.getElementById(id).textContent = text || ''; }
+function showSignup() { document.getElementById('signup-form').style.display = 'block'; document.getElementById('login-form').style.display = 'none'; setMsg('signup-msg', ''); }
+function showLogin()  { document.getElementById('signup-form').style.display = 'none';  document.getElementById('login-form').style.display = 'block';  setMsg('login-msg', ''); }
 
-const auth = firebase.auth();
-const db = firebase.firestore();
+if (typeof firebase === 'undefined') {
+  setMsg('login-msg', 'The sign-in service could not be loaded. Check the internet connection and refresh the page.');
+} else {
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
 
-function showSignup(){
-  document.getElementById('signup-form').style.display='block';
-  document.getElementById('login-form').style.display='none';
-}
-
-function showLogin(){
-  document.getElementById('signup-form').style.display='none';
-  document.getElementById('login-form').style.display='block';
-}
-
-function signUp(){
-  const email=document.getElementById('signup-email').value.trim();
-  const pass=document.getElementById('signup-pass').value.trim();
-
-  auth.createUserWithEmailAndPassword(email,pass)
-    .then(()=>{
-      alert("Account created successfully!");
-      showLogin();
-    })
-    .catch(err=>{
-      alert("Signup Error: " + err.message);
-      console.error(err);
-    });
-}
-
-function signIn(){
-  const email=document.getElementById('login-email').value.trim();
-  const pass=document.getElementById('login-pass').value.trim();
-
-  auth.signInWithEmailAndPassword(email,pass)
-    .then(()=>{
-      alert("Welcome!");
-    })
-    .catch(err=>{
-      alert("Login Error: " + err.message);
-      console.error(err);
-    });
-}
-
-function signInWithGoogle(){
-  const provider=new firebase.auth.GoogleAuthProvider();
-
-  auth.signInWithPopup(provider)
-    .catch(err=>{
-      alert("Google Login Error: " + err.message);
-      console.error(err);
-    });
-}
-
-function signOut(){
-  auth.signOut();
-}
-
-auth.onAuthStateChanged(user=>{
-  const authContainer=document.getElementById('auth-container');
-  const appContent=document.getElementById('app-content');
-
-  if(user){
-    authContainer.style.display='none';
-    appContent.style.display='block';
-
-    document.getElementById("logged-user").innerHTML=
-      "Logged in as: " + user.email;
-  }else{
-    authContainer.style.display='flex';
-    appContent.style.display='none';
+  function signUp() {
+    const email = document.getElementById('signup-email').value.trim();
+    const pass = document.getElementById('signup-pass').value;
+    setMsg('signup-msg', '');
+    auth.createUserWithEmailAndPassword(email, pass)
+      .then(() => { /* the screen closes automatically when the new user is signed in */ })
+      .catch(err => setMsg('signup-msg', authError(err)));
   }
-});
+  function signIn() {
+    const email = document.getElementById('login-email').value.trim();
+    const pass = document.getElementById('login-pass').value;
+    setMsg('login-msg', '');
+    auth.signInWithEmailAndPassword(email, pass)
+      .catch(err => setMsg('login-msg', authError(err)));
+  }
+  function signInWithGoogle() {
+    setMsg('login-msg', '');
+    auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())
+      .catch(err => setMsg('login-msg', authError(err)));
+  }
+  function signOut() { auth.signOut(); }
+
+  auth.onAuthStateChanged(user => {
+    document.getElementById('auth-container').style.display = user ? 'none' : 'flex';
+  });
+  document.addEventListener('click', e => { if (e.target.id === 'bOut') signOut(); });
+}
 </script>
-
-<style>
-.auth-overlay{
-  position:fixed;
-  top:0;
-  left:0;
-  width:100%;
-  height:100%;
-  background:#96C93D;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  z-index:9999;
-}
-
-.auth-card{
-  width:400px;
-  max-width:90%;
-  background:#fff;
-  padding:30px;
-  border-radius:16px;
-  box-shadow:0 8px 25px rgba(0,0,0,.2);
-}
-
-.auth-title{
-  text-align:center;
-  color:#96C93D;
-  margin-bottom:5px;
-}
-
-.auth-sub{
-  text-align:center;
-  color:#666;
-  margin-bottom:20px;
-}
-
-.auth-input{
-  width:100%;
-  padding:12px;
-  margin-bottom:12px;
-  border:1px solid #ddd;
-  border-radius:6px;
-  box-sizing:border-box;
-}
-
-.auth-btn{
-  width:100%;
-  padding:12px;
-  border:none;
-  border-radius:6px;
-  color:white;
-  background:#96C93D;
-  cursor:pointer;
-  margin-bottom:10px;
-  font-size:15px;
-}
-
-.auth-btn:hover{
-  background:#7DA92D;
-}
-
-.google-btn{
-  background:#4285F4;
-}
-
-.google-btn:hover{
-  background:#357ae8;
-}
-</style>
-
-<div id="auth-container" class="auth-overlay">
-
-  <div class="auth-card">
-
-    <div id="login-form">
-
-      <h2 class="auth-title">APE-Billing</h2>
-      <h3 class="auth-sub">Login</h3>
-
-      <input type="email"
-             id="login-email"
-             placeholder="Email"
-             class="auth-input">
-
-      <input type="password"
-             id="login-pass"
-             placeholder="Password"
-             class="auth-input">
-
-      <button onclick="signIn()" class="auth-btn">
-        Sign In
-      </button>
-
-      <button onclick="signInWithGoogle()"
-              class="auth-btn google-btn">
-        Sign In with Google
-      </button>
-
-      <p style="text-align:center;">
-        No account?
-        <a href="#" onclick="showSignup();return false;">
-          Create Account
-        </a>
-      </p>
-
-    </div>
-
-    <div id="signup-form" style="display:none;">
-
-      <h2 class="auth-title">APE-Billing</h2>
-      <h3 class="auth-sub">Create Account</h3>
-
-      <input type="email"
-             id="signup-email"
-             placeholder="Email"
-             class="auth-input">
-
-      <input type="password"
-             id="signup-pass"
-             placeholder="Password (minimum 6 characters)"
-             class="auth-input">
-
-      <button onclick="signUp()" class="auth-btn">
-        Create Account
-      </button>
-
-      <p style="text-align:center;">
-        Already have an account?
-        <a href="#" onclick="showLogin();return false;">
-          Login
-        </a>
-      </p>
-
-    </div>
-
-  </div>
-
-</div>
-
-<div id="app-content"
-     style="display:none;position:fixed;top:10px;right:10px;z-index:9999;">
-
-  <span id="logged-user"
-        style="margin-right:10px;font-weight:bold;">
-  </span>
-
-  <button onclick="signOut()"
-          style="padding:10px 15px;
-                 background:#f44336;
-                 color:white;
-                 border:none;
-                 border-radius:6px;">
-    Logout
-  </button>
-
-</div>
 </body>
 </html>
