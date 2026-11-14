@@ -103,7 +103,6 @@ td.c{text-align:center}
       <p id="login-msg" class="auth-msg"></p>
       <button onclick="signIn()" class="auth-btn">Sign in</button>
       <button onclick="signInWithGoogle()" class="auth-btn google-btn">Sign in with Google</button>
-      <p style="text-align:center">No account? <a href="#" onclick="showSignup();return false;">Create account</a></p>
     </div>
     <div id="signup-form" style="display:none">
       <h2 class="auth-title">APE-Billing</h2>
@@ -411,7 +410,7 @@ function renameProvider(oldName, newName) {
   index().forEach(x => {
     if (x.id === co.id) return;
     const c = openCo(x.id); if (!c) return;
-    if (c.provider === oldName) { c.provider = newName; localStorage.setItem(ck(c.id), JSON.stringify(c)); }
+    if (c.provider === oldName) { c.provider = newName; persist(c); }
   });
 }
 function vPkgCard() {
@@ -440,22 +439,21 @@ const DEF_SET = {
   sigSize: { prepared: 100, noted: 150 },
   hmos: parseHmo(DEF_HMO_TEXT)
 };
-let settings = { ...DEF_SET, ...(JSON.parse(localStorage.getItem('ibapp.settings') || 'null') || {}) };
-settings.sigs = { prepared: '', noted: '', ...(settings.sigs || {}) };
-settings.sigSize = { prepared: 100, noted: 150, ...(settings.sigSize || {}) };
-settings.extraTests = settings.extraTests || [];
-if (!Array.isArray(settings.hmos)) settings.hmos = DEF_SET.hmos;
-if ((settings.listVersion || 1) < 2) {
-  DEF_SET.hmos.forEach(d => { if (!settings.hmos.some(x => x.name === d.name)) settings.hmos.push(d); });
-  settings.listVersion = 2; saveSettings();
-}
+let settings = JSON.parse(JSON.stringify(DEF_SET));
 let view = 'inventory', dirty = false, co = null;
 const $ = s => document.querySelector(s);
 const today = () => isoOf(new Date());
 
-// ---- storage: one JSON record per company in localStorage ----
-const IDX = 'ibapp.index', ck = id => 'ibapp.co.' + id;
-const index = () => JSON.parse(localStorage.getItem(IDX) || '[]');
+// ---- cloud storage (Firestore) ----
+// companies/{id}            company details, patients, prices, provider, billing state
+// companies/{id}/archive/{}  archived statements (read-only copies)
+// settings/app              letterhead, provider list, packages, print sizes
+// settings/images           logo and e-signature images
+// The app works from a copy in memory; every save is written to Firestore.
+let db = null;                 // set after sign-in
+const cache = new Map();       // company id -> company (including its archive)
+const clone = o => JSON.parse(JSON.stringify(o));
+const index = () => [...cache.values()].map(c => ({ id: c.id, name: c.name || 'Untitled' })).sort((a, b) => a.name.localeCompare(b.name));
 // most common per-patient provider in a roster (used once, to migrate older files)
 function majorityProvider(patients) {
   const n = {}; (patients || []).forEach(p => { const v = (p.hmo || '').trim(); if (v) n[v] = (n[v] || 0) + 1; });
@@ -473,20 +471,61 @@ function migrateCo(c) {
   if (!c.providerMigrated) { if (!c.provider) c.provider = majorityProvider(c.patients); c.providerMigrated = true; }
   return c;
 }
-const openCo = id => { const c = id ? JSON.parse(localStorage.getItem(ck(id)) || 'null') : null; return c && migrateCo(c); };
+const openCo = id => { const c = id ? cache.get(id) : null; return c ? clone(c) : null; };
 function newCo(name) {
   const c = { id: Date.now().toString(36), name, address: '', date: today(), prices: {}, patients: [], downpayment: '', billed: false };
   TESTS.forEach(t => c.prices[t[0]] = t[2]);
   return c;
 }
 function persist(c) {
+  if (!db) return;
   c.updated = new Date().toISOString();
-  localStorage.setItem(ck(c.id), JSON.stringify(c));
-  const ix = index().filter(x => x.id !== c.id); ix.push({ id: c.id, name: c.name || 'Untitled' });
-  localStorage.setItem(IDX, JSON.stringify(ix));
-  localStorage.setItem('ibapp.last', c.id);
+  const prev = cache.get(c.id) || { archive: [] };
+  const next = clone(c); cache.set(c.id, next);
+  const { archive, ...doc } = next;               // the archive is stored in its own sub-collection
+  const ref = db.collection('companies').doc(c.id);
+  ref.set(doc).catch(e => toast('Cloud save failed: ' + e.message));
+  const before = new Set((prev.archive || []).map(a => a.id)), after = new Set((next.archive || []).map(a => a.id));
+  (next.archive || []).forEach(a => { if (!before.has(a.id)) ref.collection('archive').doc(a.id).set(a).catch(e => toast('Cloud save failed: ' + e.message)); });
+  (prev.archive || []).forEach(a => { if (!after.has(a.id)) ref.collection('archive').doc(a.id).delete().catch(() => {}); });
 }
-function saveSettings() { localStorage.setItem('ibapp.settings', JSON.stringify(settings)); }
+function saveSettings() {
+  if (!db) return;
+  clearTimeout(saveSettings.t);
+  saveSettings.t = setTimeout(() => {         // waits briefly so typing does not write on every key
+    const { logo, sigs, ...rest } = settings;
+    db.collection('settings').doc('app').set(clone(rest)).catch(e => toast('Settings save failed: ' + e.message));
+    db.collection('settings').doc('images').set(clone({ logo, sigs })).catch(e => toast('Image save failed: ' + e.message));
+  }, 400);
+}
+function deleteCompanyCloud(id) {
+  const ref = db.collection('companies').doc(id), c = cache.get(id);
+  ((c && c.archive) || []).forEach(a => ref.collection('archive').doc(a.id).delete().catch(() => {}));
+  ref.delete().catch(e => toast('Delete failed: ' + e.message));
+  cache.delete(id);
+}
+// loads everything for the signed-in user into the in-memory copy
+async function loadCloud() {
+  cache.clear();
+  const snap = await db.collection('companies').get();
+  for (const d of snap.docs) {
+    const c = migrateCo({ ...d.data(), id: d.id });
+    const arch = await d.ref.collection('archive').get();
+    c.archive = arch.docs.map(x => x.data()).sort((a, b) => (a.issued || '').localeCompare(b.issued || ''));
+    cache.set(c.id, c);
+  }
+  const s = await db.collection('settings').doc('app').get();
+  if (s.exists) Object.assign(settings, s.data());
+  const im = await db.collection('settings').doc('images').get();
+  if (im.exists) Object.assign(settings, { logo: im.data().logo || '', sigs: { ...(settings.sigs || {}), ...(im.data().sigs || {}) } });
+  return cache.size;
+}
+// companies and settings saved by the earlier browser-only version of the app
+function localLegacy() {
+  const cos = Object.keys(localStorage).filter(k => k.startsWith('ibapp.co.')).map(k => JSON.parse(localStorage.getItem(k)));
+  const st = localStorage.getItem('ibapp.settings');
+  return { cos, st: st ? JSON.parse(st) : null };
+}
 function save() { persist(co); dirty = false; render(); toast('Saved: ' + co.name); }
 
 // ---- UI helpers ----
@@ -854,8 +893,7 @@ $('#view').addEventListener('click', e => {
   else if (a === 'exportCo') download(co.name.replace(/\W+/g, '_') + '.json', JSON.stringify(co, null, 2));
   else if (a === 'delCo') {
     if (!confirm(`Delete "${co.name}" from this browser? Export it first if you need a copy.`)) return;
-    localStorage.removeItem(ck(co.id));
-    localStorage.setItem(IDX, JSON.stringify(index().filter(x => x.id !== co.id)));
+    deleteCompanyCloud(co.id);
     const next = index()[0]; co = next ? openCo(next.id) : newCo('My Company');
     if (!next) persist(co);
     dirty = false;
@@ -1008,11 +1046,56 @@ $('#view').addEventListener('toggle', e => {
   settings.collapsed = settings.collapsed || {}; settings.collapsed[id] = !e.target.open; saveSettings();
 }, true);
 
-// ---- boot ----
-{
-  const ix = index();
-  co = openCo(localStorage.getItem('ibapp.last')) || (ix[0] && openCo(ix[0].id));
+// tests added by the user (Prices & Letterhead). They join the same arrays as the built-in tests.
+function applyExtra(x) {
+  const id = 'X' + x.code;
+  if (TESTS.some(t => t[0] === id || t[3] === x.code)) return false;
+  const t = [id, x.name, Number(x.price) || 0, x.code];
+  TESTS.push(t); FLAGS.push(x.code); LINE_TESTS.push(t); ALIAS[x.name.toUpperCase()] = x.code;
+  return true;
+}
+function dropExtra(code) {
+  const i = TESTS.findIndex(t => t[3] === code); if (i < 0) return;
+  const t = TESTS[i];
+  TESTS.splice(i, 1); FLAGS.splice(FLAGS.indexOf(code), 1);
+  const j = LINE_TESTS.indexOf(t); if (j >= 0) LINE_TESTS.splice(j, 1);
+  delete ALIAS[t[1].toUpperCase()];
+}
+// settings that depend on the saved settings: runs after the cloud settings are loaded
+function normalizeSettings() {
+  settings.sigs = { prepared: '', noted: '', ...(settings.sigs || {}) };
+  settings.sigSize = { prepared: 100, noted: 150, ...(settings.sigSize || {}) };
+  settings.extraTests = settings.extraTests || [];
+  if (!Array.isArray(settings.hmos)) settings.hmos = clone(DEF_SET.hmos);
+  if ((settings.listVersion || 1) < 2) {
+    DEF_SET.hmos.forEach(d => { if (!settings.hmos.some(x => x.name === d.name)) settings.hmos.push(clone(d)); });
+    settings.listVersion = 2;
+  }
+  settings.extraTests.forEach(applyExtra);   // safe to repeat: tests already added are skipped
+}
+// called once the user has signed in
+async function startApp() {
+  $('#view').innerHTML = '<p style="padding:20px">Loading company data…</p>';
+  try {
+    let n = await loadCloud();
+    const legacy = localLegacy();
+    if (n === 0 && legacy.cos.length &&
+        confirm(`Found ${legacy.cos.length} company file(s) saved in this browser. Upload them to the cloud now? (Cancel keeps them in the browser only.)`)) {
+      if (legacy.st) Object.assign(settings, legacy.st);
+      legacy.cos.forEach(c => persist(migrateCo(c)));
+      saveSettings();
+      n = cache.size;
+      toast(`Uploaded ${n} company file(s)`);
+    }
+  } catch (e) {
+    console.error(e);
+    $('#view').innerHTML = `<div class="card" style="margin:20px">Could not load data from the cloud: ${esc(e.message)}<br>Check the Firestore rules and the internet connection, then refresh the page.</div>`;
+    return;
+  }
+  normalizeSettings();
+  co = openCo(localStorage.getItem('ibapp.last')) || (index()[0] && openCo(index()[0].id));
   if (!co) { co = newCo('My Company'); persist(co); }
+  view = view || 'inventory';
   render();
   if (settings.logo && !settings.logoTrimmed) processImg(settings.logo, 600, true)
     .then(d => { settings.logo = d; settings.logoTrimmed = true; saveSettings(); render(); }).catch(() => {});
@@ -1028,6 +1111,7 @@ $('#view').addEventListener('toggle', e => {
 <!-- Firebase Authentication (sign-in only; company data stays in this browser) -->
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 <script>
 const firebaseConfig = {
   apiKey: "AIzaSyAnzaC0zBY3eHPFjw5UUG3E8Slj2en98OU",
@@ -1084,10 +1168,11 @@ if (typeof firebase === 'undefined') {
     auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())
       .catch(err => setMsg('login-msg', authError(err)));
   }
-  function signOut() { auth.signOut(); }
+  function signOut() { auth.signOut().then(() => location.reload()); }
 
   auth.onAuthStateChanged(user => {
     document.getElementById('auth-container').style.display = user ? 'none' : 'flex';
+    if (user) { db = firebase.firestore(); startApp(); }
   });
   document.addEventListener('click', e => { if (e.target.id === 'bOut') signOut(); });
 }

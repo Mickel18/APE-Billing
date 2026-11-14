@@ -1,0 +1,12 @@
+rules_version = '2';
+
+// Paste into Firebase console → Firestore Database → Rules, then Publish.
+// Any signed-in user can read and write. Public sign-up is turned off in the app,
+// so only accounts you create in Firebase Authentication can sign in.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
