@@ -22,7 +22,16 @@ The whole app is one file, `index.html`. No build step and no server are needed 
 
 ## Where the data lives
 
-Everything is stored in the browser's local storage, one record per company. Nothing is sent to a server. Export a company as JSON from Data & Storage to back it up or move it to another computer.
+Companies, statements, prices, and settings are stored in **Cloud Firestore**, and sign-in uses **Firebase Authentication**. Public sign-up is off: only accounts created in the Firebase console can sign in.
+
+- `companies/{id}`: company details, roster, provider, prices, billing state.
+- `companies/{id}/archive/{id}`: archived (read-only) statements.
+- `settings/app`: letterhead, provider list and packages, print sizes.
+- `settings/images`: logo and e-signature images.
+
+The security rules are in `firestore.rules`. Paste them into Firestore → Rules and publish. As written, any signed-in user can read and write all data.
+
+Export a company as JSON from Data & Storage to keep an offline backup.
 
 ## Sign-in: limits
 
@@ -46,6 +55,7 @@ GitHub Pages on a free account requires a **public** repository. The repository 
 - `.nojekyll` — tells GitHub Pages to serve files as-is.
 - `.gitignore` — keeps workbooks, CSVs, PDFs, and exports out of the repository.
 - `LICENSE` — Apache License 2.0.
+- `firestore.rules` — Firestore security rules (publish in the Firebase console).
 
 ## Licence
 
