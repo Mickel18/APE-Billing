@@ -66,7 +66,9 @@ td.c{text-align:center}
   @bottom-left{content:"Confidential";font:9px Arial,sans-serif;color:#555;vertical-align:top;padding-top:4mm}
   @bottom-right{content:"Page " counter(page) " of " counter(pages);font:9px Arial,sans-serif;color:#555;vertical-align:top;padding-top:4mm}}
 @media print{
-  .side,.top,.noprint,.toast,dialog,#login{display:none!important}
+  /* keep the header and total colours on paper (no need to tick "Background graphics") */
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  .side,.top,.noprint,.toast,dialog{display:none!important}
   main{margin:0}
   .pad{padding:0}
   body{background:#fff}
@@ -79,19 +81,6 @@ td.c{text-align:center}
 </style>
 </head>
 <body>
-<div id="login" style="position:fixed;inset:0;background:#eef3e4;display:none;align-items:center;justify-content:center;z-index:100">
-  <form id="loginForm" class="card" style="width:340px">
-    <div style="text-align:center;margin-bottom:10px"><b style="color:#2f5a0e">Exact Check Diagnostic Center</b><br>Medical Field Operations</div>
-    <h3 id="loginTitle" style="margin-top:0"></h3>
-    <p id="loginNote" style="font-size:12px"></p>
-    <div class="grid" style="grid-template-columns:110px 1fr">
-      <label>Username</label><input id="lUser" autocomplete="username">
-      <label>Password</label><input id="lPass" type="password" autocomplete="current-password">
-    </div>
-    <p id="lErr" style="color:#a11b1b;font-size:12px;min-height:16px;margin:8px 0"></p>
-    <button class="btn" id="lBtn" type="submit" style="width:100%;background:#96C93D;border-color:#96C93D;color:#111;font-weight:bold"></button>
-  </form>
-</div>
 <aside class="side">
   <div class="brand"><div class="clinic">Exact Check Diagnostic Center</div><div class="dept">Medical Field Operations</div></div>
   <select id="coSel" title="Company"></select>
@@ -587,7 +576,7 @@ function archListHtml() {
   return `<div class="card noprint" style="margin-top:14px"><h3 style="margin-top:0">Archived statements (read-only)</h3>
     <div class="tw" style="max-height:340px"><table><thead><tr><th>Transmittal</th><th>Type</th><th>Billed to</th><th>APE date</th><th>Issued</th><th style="text-align:right">Net</th><th></th></tr></thead><tbody>
     ${list.map(e => `<tr><td>${esc(e.transmittal)}</td><td>${e.type === 'hmo' ? 'HMO-Billed' : e.type === 'loa' ? 'LOA' : 'Company-Billed'}</td><td>${esc(e.data.billTo)}</td><td>${fmtD(e.data.apeDate)}</td><td>${fmtDT(e.issued)}</td><td style="text-align:right">${fmt(e.data.net)}</td>
-      <td class="noprint"><button class="btn ghost" data-act="archView" data-k="${esc(e.id)}">View</button> <button class="btn ghost" data-act="archDl" data-k="${esc(e.id)}">Download</button></td></tr>`).join('')}
+      <td class="noprint"><button class="btn ghost" data-act="archView" data-k="${esc(e.id)}">View</button> <button class="btn ghost" data-act="archDl" data-k="${esc(e.id)}">Download</button> <button class="btn danger" data-act="archDel" data-k="${esc(e.id)}">Delete</button></td></tr>`).join('')}
     </tbody></table></div></div>`;
 }
 function vBill() {
@@ -664,7 +653,6 @@ function vPrices() {
   </div></div>`;
 }
 function vData() {
-  const me = sessionStorage.getItem(SESS_KEY);
   return `<div class="card" style="max-width:760px"><h3 style="margin-top:0">Roster import</h3>
     <p>Upload the workbook (.xlsm / .xlsx) or a CSV. The INVENTORY tab, its header block and the Breakdown prices are read automatically. A CSV needs a header row with NAME, BIRTHDAY, GENDER, REMARKS, ACCOUNT NUMBER and test columns (PE, CBC, CHEM, URINE, STOOL, XRAY, ECG, PS, DT, HBSAG, Hba1c, Thyroid Package, Blood Typing w/ Card, FBS, LIPID PROFILE, BUA, BUN, Creatinine, SGPT, SGOT, TOTAL CHOLESTEROL, TRIGLYCERIDES).</p>
     <button class="btn" data-act="import">Import file (replaces this company's rows)</button></div>
@@ -673,19 +661,13 @@ function vData() {
     <button class="btn ghost" data-act="exportCo">Export "${esc(co.name)}" (JSON)</button>
     <button class="btn ghost" data-act="importCo">Import company (JSON)</button>
     <button class="btn danger" data-act="delCo">Delete this company</button></div>
-  <div class="card" style="max-width:760px"><h3 style="margin-top:0">Users (this browser)</h3>
-    <p style="font-size:12px">Sign-in accounts are stored in this browser only. Each computer or browser keeps its own list.</p>
-    <table style="max-width:420px"><thead><tr><th>Username</th><th></th></tr></thead><tbody>
-    ${usersAll().map(x => `<tr><td>${esc(x.user)}${x.user === me ? ' <i>(you)</i>' : ''}</td><td>${x.user === me ? '' : `<button class="btn danger" data-act="userDel" data-k="${esc(x.user)}">Remove</button>`}</td></tr>`).join('')}
-    </tbody></table>
-    <p style="margin-top:10px"><input id="nuName" placeholder="new username"> <input id="nuPass" type="password" placeholder="password (8+ characters)"> <button class="btn" data-act="userAdd">Add user</button></p>
-    <p><input id="cpPass" type="password" placeholder="new password for me"> <button class="btn ghost" data-act="userPw">Change my password</button></p></div>`;
+`;
 }
 // ---- rendering & navigation ----
 function renderSide() {
   $('#nav').innerHTML = VIEWS.map(([k, l]) => `<button data-v="${k}" class="${k === view ? 'on' : ''}">${l}</button>`).join('');
   $('#coSel').innerHTML = index().map(x => `<option value="${x.id}"${x.id === co.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('');
-  $('#foot').innerHTML = 'Signed in: <b>' + esc(sessionStorage.getItem(SESS_KEY) || '') + '</b><br>' + index().length + ' company file(s)<br><button class="btn ghost" id="bOut" style="margin-top:8px;background:#fff">Sign out</button>';
+  $('#foot').innerHTML = 'Saved in this browser.<br>' + index().length + ' company file(s)';
 }
 function render() {
   renderSide();
@@ -750,7 +732,10 @@ async function importRoster(file) {
 
 function printView() {
   $('#pageStyle').textContent = `@page{size:A4 ${['inventory', 'breakdown'].includes(view) ? 'landscape' : 'portrait'}}`;
+  // browsers print the page title in their header; blank it for the print, then restore it
+  const t = document.title; document.title = ' ';
   window.print();
+  document.title = t;
 }
 
 // ---- events ----
@@ -804,27 +789,17 @@ $('#view').addEventListener('click', e => {
     settings.extraTests = (settings.extraTests || []).filter(x => x.code !== code); saveSettings();
     dropExtra(code); return render();
   }
-  if (a === 'userAdd') {
-    const u = $('#nuName').value.trim(), p = $('#nuPass').value, msg = checkNewCreds(u, p);
-    if (msg) return alert(msg);
-    if (usersAll().some(x => x.user === u)) return alert('That username already exists.');
-    return createUser(u, p).then(() => { toast('User added'); render(); });
-  }
-  if (a === 'userDel') {
-    if (b.dataset.k === sessionStorage.getItem(SESS_KEY)) return;
-    if (!confirm(`Remove user "${b.dataset.k}"?`)) return;
-    localStorage.setItem(USERS_KEY, JSON.stringify(usersAll().filter(x => x.user !== b.dataset.k))); return render();
-  }
-  if (a === 'userPw') {
-    const me = sessionStorage.getItem(SESS_KEY), p = $('#cpPass').value;
-    if (p.length < 8) return alert('Password: at least 8 characters.');
-    const list = usersAll(), rec = list.find(x => x.user === me); if (!rec) return;
-    rec.salt = b64(crypto.getRandomValues(new Uint8Array(16)));
-    return derive(p, rec.salt).then(hh => { rec.hash = hh; localStorage.setItem(USERS_KEY, JSON.stringify(list)); toast('Password changed'); render(); });
-  }
   if (a === 'archView') { archId = b.dataset.k; return render(); }
   if (a === 'archBack') { archId = null; return render(); }
   if (a === 'archDl') { const e = (co.archive || []).find(x => x.id === b.dataset.k); if (e) downloadSoa(e.transmittal, stmtHtml(e.data)); return; }
+  if (a === 'archDel') {
+    const e = (co.archive || []).find(x => x.id === b.dataset.k); if (!e) return;
+    if (!confirm(`Delete the archived statement ${e.transmittal}?\n\nUse this for a correction. The number is not reused: the corrected statement will get the next number.`)) return;
+    co.archive = co.archive.filter(x => x.id !== e.id);
+    if (co.transmittal === e.transmittal) { co.billed = false; co.transmittal = ''; }   // the statement on the Billing tab is the one deleted: clear it so you can regenerate
+    if (archId === e.id) archId = null;
+    persist(co); dirty = false; return render();
+  }
   if (a === 'hmoAdd') {
     const name = $('#newName').value.trim(), alias = $('#newAlias').value.trim();
     if (!name) return alert('Enter the legal name.');
@@ -997,73 +972,12 @@ $('#view').addEventListener('toggle', e => {
   settings.collapsed = settings.collapsed || {}; settings.collapsed[id] = !e.target.open; saveSettings();
 }, true);
 
-// ---- sign-in (browser-level gate; passwords stored as salted PBKDF2 hashes) ----
-const USERS_KEY = 'ibapp.users', SESS_KEY = 'ibapp.user';
-const usersAll = () => JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
-const b64 = bytes => btoa(String.fromCharCode(...bytes));
-const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-async function derive(pw, saltB64) {
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: unb64(saltB64), iterations: 210000, hash: 'SHA-256' }, key, 256);
-  return b64(new Uint8Array(bits));
-}
-async function createUser(u, pw) {
-  const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
-  const list = usersAll(); list.push({ user: u, salt, hash: await derive(pw, salt) });
-  localStorage.setItem(USERS_KEY, JSON.stringify(list));
-}
-function checkNewCreds(u, pw) {
-  if (!/^[A-Za-z0-9._-]{3,}$/.test(u)) return 'Username: at least 3 letters, numbers, dot, dash or underscore.';
-  if (pw.length < 8) return 'Password: at least 8 characters.';
-  return '';
-}
-function showAuth() {
-  const setup = usersAll().length === 0, sess = sessionStorage.getItem(SESS_KEY);
-  if (!setup && sess && usersAll().some(x => x.user === sess)) { $('#login').style.display = 'none'; return; }
-  $('#login').style.display = 'flex';
-  $('#loginTitle').textContent = setup ? 'Create the administrator account' : 'Sign in';
-  $('#loginNote').textContent = setup ? 'First run on this browser. This account can add other users.' : '';
-  $('#lBtn').textContent = setup ? 'Create account' : 'Sign in';
-}
-$('#loginForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  const u = $('#lUser').value.trim(), p = $('#lPass').value; $('#lErr').textContent = '';
-  if (usersAll().length === 0) {
-    const msg = checkNewCreds(u, p); if (msg) { $('#lErr').textContent = msg; return; }
-    await createUser(u, p); sessionStorage.setItem(SESS_KEY, u); return showAuth();
-  }
-  const rec = usersAll().find(x => x.user === u);
-  if (!rec || (await derive(p, rec.salt)) !== rec.hash) { $('#lErr').textContent = 'Wrong username or password.'; return; }
-  sessionStorage.setItem(SESS_KEY, u); showAuth();
-});
-document.addEventListener('click', e => {
-  if (e.target.id === 'bOut') { sessionStorage.removeItem(SESS_KEY); location.reload(); }
-});
-
-// tests added by the user (Prices & Letterhead). They join the same arrays as the built-in tests.
-function applyExtra(x) {
-  const id = 'X' + x.code;
-  if (TESTS.some(t => t[0] === id || t[3] === x.code)) return false;
-  const t = [id, x.name, Number(x.price) || 0, x.code];
-  TESTS.push(t); FLAGS.push(x.code); LINE_TESTS.push(t); ALIAS[x.name.toUpperCase()] = x.code;
-  return true;
-}
-function dropExtra(code) {
-  const i = TESTS.findIndex(t => t[3] === code); if (i < 0) return;
-  const t = TESTS[i];
-  TESTS.splice(i, 1); FLAGS.splice(FLAGS.indexOf(code), 1);
-  const j = LINE_TESTS.indexOf(t); if (j >= 0) LINE_TESTS.splice(j, 1);
-  delete ALIAS[t[1].toUpperCase()];
-}
-settings.extraTests.forEach(applyExtra);
-
 // ---- boot ----
 {
   const ix = index();
   co = openCo(localStorage.getItem('ibapp.last')) || (ix[0] && openCo(ix[0].id));
   if (!co) { co = newCo('My Company'); persist(co); }
   render();
-  showAuth();
   if (settings.logo && !settings.logoTrimmed) processImg(settings.logo, 600, true)
     .then(d => { settings.logo = d; settings.logoTrimmed = true; saveSettings(); render(); }).catch(() => {});
   if (!settings.sigClean) {
@@ -1073,15 +987,14 @@ settings.extraTests.forEach(applyExtra);
     if (!ks.length) { settings.sigClean = true; saveSettings(); }
   }
 }
-</script>
-<!-- FIREBASE AUTH -->
+<!-- FIREBASE -->
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 
 <script>
 const firebaseConfig = {
-  apiKey: "AIzaSyAnzaC0zBY3eHPFjw5UUG3E8SLj2en980U",
+  apiKey: "YOUR_API_KEY",
   authDomain: "ape-billing.firebaseapp.com",
   projectId: "ape-billing",
   storageBucket: "ape-billing.firebasestorage.app",
@@ -1089,50 +1002,236 @@ const firebaseConfig = {
   appId: "1:637556083279:web:ebc28cb4ffc72ab835383a",
   measurementId: "G-R5XN6Y76LB"
 };
+
 firebase.initializeApp(firebaseConfig);
+
 const auth = firebase.auth();
 const db = firebase.firestore();
-</script>
 
-<script>
-function showSignup(){document.getElementById('signup-form').style.display='block';document.getElementById('login-form').style.display='none';}
-function showLogin(){document.getElementById('signup-form').style.display='none';document.getElementById('login-form').style.display='block';}
-function signUp(){const e=document.getElementById('signup-email').value;const p=document.getElementById('signup-pass').value;auth.createUserWithEmailAndPassword(e,p).then(()=>alert("Account created! ✅")).catch(err=>alert("Error: "+err.message));}
-function signIn(){const e=document.getElementById('login-email').value;const p=document.getElementById('login-pass').value;auth.signInWithEmailAndPassword(e,p).then(()=>alert("Welcome! ✅")).catch(err=>alert("Error: "+err.message));}
-function signInWithGoogle(){const p=new firebase.auth.GoogleAuthProvider();auth.signInWithPopup(p).then(()=>alert("Welcome! ✅")).catch(err=>alert("Error: "+err.message));}
-function signOut(){auth.signOut().then(()=>alert("Logged out"));}
-auth.onAuthStateChanged(u=>{
-  const c=document.getElementById('auth-container');
-  const a=document.getElementById('app-content');
-  if(u){c.style.display='none';a.style.display='block';}
-  else{c.style.display='flex';a.style.display='none';}
+function showSignup(){
+  document.getElementById('signup-form').style.display='block';
+  document.getElementById('login-form').style.display='none';
+}
+
+function showLogin(){
+  document.getElementById('signup-form').style.display='none';
+  document.getElementById('login-form').style.display='block';
+}
+
+function signUp(){
+  const email=document.getElementById('signup-email').value.trim();
+  const pass=document.getElementById('signup-pass').value.trim();
+
+  auth.createUserWithEmailAndPassword(email,pass)
+    .then(()=>{
+      alert("Account created successfully!");
+      showLogin();
+    })
+    .catch(err=>{
+      alert("Signup Error: " + err.message);
+      console.error(err);
+    });
+}
+
+function signIn(){
+  const email=document.getElementById('login-email').value.trim();
+  const pass=document.getElementById('login-pass').value.trim();
+
+  auth.signInWithEmailAndPassword(email,pass)
+    .then(()=>{
+      alert("Welcome!");
+    })
+    .catch(err=>{
+      alert("Login Error: " + err.message);
+      console.error(err);
+    });
+}
+
+function signInWithGoogle(){
+  const provider=new firebase.auth.GoogleAuthProvider();
+
+  auth.signInWithPopup(provider)
+    .catch(err=>{
+      alert("Google Login Error: " + err.message);
+      console.error(err);
+    });
+}
+
+function signOut(){
+  auth.signOut();
+}
+
+auth.onAuthStateChanged(user=>{
+  const authContainer=document.getElementById('auth-container');
+  const appContent=document.getElementById('app-content');
+
+  if(user){
+    authContainer.style.display='none';
+    appContent.style.display='block';
+
+    document.getElementById("logged-user").innerHTML=
+      "Logged in as: " + user.email;
+  }else{
+    authContainer.style.display='flex';
+    appContent.style.display='none';
+  }
 });
 </script>
 
-<div id="auth-container" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;">
-  <div style="background:#fff;padding:2rem;border-radius:8px;max-width:400px;width:90%;">
+<style>
+.auth-overlay{
+  position:fixed;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  background:#96C93D;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:9999;
+}
+
+.auth-card{
+  width:400px;
+  max-width:90%;
+  background:#fff;
+  padding:30px;
+  border-radius:16px;
+  box-shadow:0 8px 25px rgba(0,0,0,.2);
+}
+
+.auth-title{
+  text-align:center;
+  color:#96C93D;
+  margin-bottom:5px;
+}
+
+.auth-sub{
+  text-align:center;
+  color:#666;
+  margin-bottom:20px;
+}
+
+.auth-input{
+  width:100%;
+  padding:12px;
+  margin-bottom:12px;
+  border:1px solid #ddd;
+  border-radius:6px;
+  box-sizing:border-box;
+}
+
+.auth-btn{
+  width:100%;
+  padding:12px;
+  border:none;
+  border-radius:6px;
+  color:white;
+  background:#96C93D;
+  cursor:pointer;
+  margin-bottom:10px;
+  font-size:15px;
+}
+
+.auth-btn:hover{
+  background:#7DA92D;
+}
+
+.google-btn{
+  background:#4285F4;
+}
+
+.google-btn:hover{
+  background:#357ae8;
+}
+</style>
+
+<div id="auth-container" class="auth-overlay">
+
+  <div class="auth-card">
+
     <div id="login-form">
-      <h2 style="text-align:center;color:#002060;margin-top:0;">APE-Billing</h2>
-      <h3 style="text-align:center;color:#666;margin-top:-0.5rem;">Login</h3>
-      <input type="email" id="login-email" placeholder="Email" style="width:100%;padding:10px;margin:8px 0;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
-      <input type="password" id="login-pass" placeholder="Password" style="width:100%;padding:10px;margin:8px 0;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
-      <button onclick="signIn()" style="width:100%;padding:10px;background:#002060;color:#fff;border:none;border-radius:4px;font-size:16px;cursor:pointer;margin-top:8px;">Sign In</button>
-      <button onclick="signInWithGoogle()" style="width:100%;padding:10px;background:#4285F4;color:#fff;border:none;border-radius:4px;font-size:16px;cursor:pointer;margin-top:8px;">Sign in with Google</button>
-      <p style="text-align:center;margin-top:1rem;">No account? <a href="#" onclick="showSignup();return false;" style="color:#002060;font-weight:bold;">Sign up</a></p>
+
+      <h2 class="auth-title">APE-Billing</h2>
+      <h3 class="auth-sub">Login</h3>
+
+      <input type="email"
+             id="login-email"
+             placeholder="Email"
+             class="auth-input">
+
+      <input type="password"
+             id="login-pass"
+             placeholder="Password"
+             class="auth-input">
+
+      <button onclick="signIn()" class="auth-btn">
+        Sign In
+      </button>
+
+      <button onclick="signInWithGoogle()"
+              class="auth-btn google-btn">
+        Sign In with Google
+      </button>
+
+      <p style="text-align:center;">
+        No account?
+        <a href="#" onclick="showSignup();return false;">
+          Create Account
+        </a>
+      </p>
+
     </div>
+
     <div id="signup-form" style="display:none;">
-      <h2 style="text-align:center;color:#002060;margin-top:0;">APE-Billing</h2>
-      <h3 style="text-align:center;color:#666;margin-top:-0.5rem;">Create Account</h3>
-      <input type="email" id="signup-email" placeholder="Email" style="width:100%;padding:10px;margin:8px 0;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
-      <input type="password" id="signup-pass" placeholder="Password (min 6 chars)" style="width:100%;padding:10px;margin:8px 0;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
-      <button onclick="signUp()" style="width:100%;padding:10px;background:#002060;color:#fff;border:none;border-radius:4px;font-size:16px;cursor:pointer;margin-top:8px;">Create Account</button>
-      <p style="text-align:center;margin-top:1rem;">Have account? <a href="#" onclick="showLogin();return false;" style="color:#002060;font-weight:bold;">Login</a></p>
+
+      <h2 class="auth-title">APE-Billing</h2>
+      <h3 class="auth-sub">Create Account</h3>
+
+      <input type="email"
+             id="signup-email"
+             placeholder="Email"
+             class="auth-input">
+
+      <input type="password"
+             id="signup-pass"
+             placeholder="Password (minimum 6 characters)"
+             class="auth-input">
+
+      <button onclick="signUp()" class="auth-btn">
+        Create Account
+      </button>
+
+      <p style="text-align:center;">
+        Already have an account?
+        <a href="#" onclick="showLogin();return false;">
+          Login
+        </a>
+      </p>
+
     </div>
+
   </div>
+
 </div>
 
-<div id="app-content" style="display:none;position:fixed;top:10px;right:10px;z-index:9999;">
-  <button onclick="signOut()" style="padding:8px 16px;background:#f44336;color:#fff;border:none;border-radius:4px;cursor:pointer;">Logout</button>
+<div id="app-content"
+     style="display:none;position:fixed;top:10px;right:10px;z-index:9999;">
+
+  <span id="logged-user"
+        style="margin-right:10px;font-weight:bold;">
+  </span>
+
+  <button onclick="signOut()"
+          style="padding:10px 15px;
+                 background:#f44336;
+                 color:white;
+                 border:none;
+                 border-radius:6px;">
+    Logout
+  </button>
+
 </div>
 </body>
 </html>
