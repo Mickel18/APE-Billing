@@ -1074,5 +1074,65 @@ settings.extraTests.forEach(applyExtra);
   }
 }
 </script>
+<!-- FIREBASE AUTH -->
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyAnzaC0zBY3eHPFjw5UUG3E8SLj2en980U",
+  authDomain: "ape-billing.firebaseapp.com",
+  projectId: "ape-billing",
+  storageBucket: "ape-billing.firebasestorage.app",
+  messagingSenderId: "637556083279",
+  appId: "1:637556083279:web:ebc28cb4ffc72ab835383a",
+  measurementId: "G-R5XN6Y76LB"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+</script>
+
+<script>
+function showSignup(){document.getElementById('signup-form').style.display='block';document.getElementById('login-form').style.display='none';}
+function showLogin(){document.getElementById('signup-form').style.display='none';document.getElementById('login-form').style.display='block';}
+function signUp(){const e=document.getElementById('signup-email').value;const p=document.getElementById('signup-pass').value;auth.createUserWithEmailAndPassword(e,p).then(()=>alert("Account created! ✅")).catch(err=>alert("Error: "+err.message));}
+function signIn(){const e=document.getElementById('login-email').value;const p=document.getElementById('login-pass').value;auth.signInWithEmailAndPassword(e,p).then(()=>alert("Welcome! ✅")).catch(err=>alert("Error: "+err.message));}
+function signInWithGoogle(){const p=new firebase.auth.GoogleAuthProvider();auth.signInWithPopup(p).then(()=>alert("Welcome! ✅")).catch(err=>alert("Error: "+err.message));}
+function signOut(){auth.signOut().then(()=>alert("Logged out"));}
+auth.onAuthStateChanged(u=>{
+  const c=document.getElementById('auth-container');
+  const a=document.getElementById('app-content');
+  if(u){c.style.display='none';a.style.display='block';}
+  else{c.style.display='flex';a.style.display='none';}
+});
+</script>
+
+<div id="auth-container" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;">
+  <div style="background:#fff;padding:2rem;border-radius:8px;max-width:400px;width:90%;">
+    <div id="login-form">
+      <h2 style="text-align:center;color:#002060;margin-top:0;">APE-Billing</h2>
+      <h3 style="text-align:center;color:#666;margin-top:-0.5rem;">Login</h3>
+      <input type="email" id="login-email" placeholder="Email" style="width:100%;padding:10px;margin:8px 0;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
+      <input type="password" id="login-pass" placeholder="Password" style="width:100%;padding:10px;margin:8px 0;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
+      <button onclick="signIn()" style="width:100%;padding:10px;background:#002060;color:#fff;border:none;border-radius:4px;font-size:16px;cursor:pointer;margin-top:8px;">Sign In</button>
+      <button onclick="signInWithGoogle()" style="width:100%;padding:10px;background:#4285F4;color:#fff;border:none;border-radius:4px;font-size:16px;cursor:pointer;margin-top:8px;">Sign in with Google</button>
+      <p style="text-align:center;margin-top:1rem;">No account? <a href="#" onclick="showSignup();return false;" style="color:#002060;font-weight:bold;">Sign up</a></p>
+    </div>
+    <div id="signup-form" style="display:none;">
+      <h2 style="text-align:center;color:#002060;margin-top:0;">APE-Billing</h2>
+      <h3 style="text-align:center;color:#666;margin-top:-0.5rem;">Create Account</h3>
+      <input type="email" id="signup-email" placeholder="Email" style="width:100%;padding:10px;margin:8px 0;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
+      <input type="password" id="signup-pass" placeholder="Password (min 6 chars)" style="width:100%;padding:10px;margin:8px 0;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
+      <button onclick="signUp()" style="width:100%;padding:10px;background:#002060;color:#fff;border:none;border-radius:4px;font-size:16px;cursor:pointer;margin-top:8px;">Create Account</button>
+      <p style="text-align:center;margin-top:1rem;">Have account? <a href="#" onclick="showLogin();return false;" style="color:#002060;font-weight:bold;">Login</a></p>
+    </div>
+  </div>
+</div>
+
+<div id="app-content" style="display:none;position:fixed;top:10px;right:10px;z-index:9999;">
+  <button onclick="signOut()" style="padding:8px 16px;background:#f44336;color:#fff;border:none;border-radius:4px;cursor:pointer;">Logout</button>
+</div>
 </body>
 </html>
