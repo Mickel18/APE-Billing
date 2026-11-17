@@ -198,6 +198,8 @@ const HMO_PKG = ['B5', 'ECG', 'PS'];
 // Set the provider once per company (Inventory tab). The provider's package is set under Prices & Letterhead.
 //   company: every billable test; if a provider is set, its package tests are left for the provider statement.
 //   hmo:     only the provider's package tests.
+// tests the company does NOT pay for (set under Prices & Letterhead → Company-billed package). Empty = all tests.
+let COMPANY_EXCL = [];
 function billing(c, packageOf) {
   const hmo = c.billType === 'hmo', pkgOf = packageOf || (() => HMO_PKG), prov = (c.provider || '').trim();
   const pkg = pkgOf(prov), lines = []; let total = 0;
@@ -208,6 +210,7 @@ function billing(c, packageOf) {
     LINE_TESTS.forEach(t => {
       const pr = price(c, t), inPkg = pkg.includes(t[0]);
       if (!bdHas(p, t) || !(pr > 0)) return;
+      if (!hmo && COMPANY_EXCL.includes(t[0])) return;   // not covered by the company
       if (hmo ? !inPkg : (member && prov && inPkg)) return;   // a member's package tests belong to the HMO
       parts.push(t[1]); amt += pr;
     });
@@ -386,8 +389,8 @@ function packageFor(name) { return (settings.packages || {})[name] || HMO_PKG; }
 function pkgLabels(name) { return packageFor(name).map(id => (TESTS.find(t => t[0] === id) || [id, id])[1]).join(', '); }
 function curPkgProv() { const n = (settings.hmos || []).map(x => x.name); return n.includes(pkgProv) ? pkgProv : n[0]; }
 function pkgNote() {
-  return co.provider ? `Package for ${esc(co.provider)}: ${esc(pkgLabels(co.provider))}. Only these tests go to the provider; the rest go to the company.`
-    : 'Each provider has its own package (Prices & Letterhead → Provider packages). Only package tests go to the provider; the rest go to the company.';
+  return co.provider ? `HMO package for ${esc(co.provider)}: ${esc(pkgLabels(co.provider))}. Members' other tests go to the company, if ticked in the company-billed package.`
+    : 'Each provider has its own HMO package (Prices & Letterhead). Members\' tests outside it go to the company, if ticked in the company-billed package.';
 }
 function vHmoList() {
   const rows = (settings.hmos || []).map((x, i) => `<tr>
@@ -413,9 +416,16 @@ function renameProvider(oldName, newName) {
     if (c.provider === oldName) { c.provider = newName; persist(c); }
   });
 }
+function vCompanyCard() {
+  const excl = settings.companyExcl || [];
+  return coll('cpkg', 'Company-billed package: tests the company pays for', `
+    <p style="font-size:12px;margin:0 0 8px">Tick the tests the company pays for. All are ticked by default. Non-members are billed the ticked tests. A member is billed the ticked tests minus the tests in the HMO package of their provider.</p>
+    <div style="columns:2;font-size:13px">${TESTS.map(t => `<label style="display:block;break-inside:avoid"><input type="checkbox" data-cpkg="${t[0]}" ${excl.includes(t[0]) ? '' : 'checked'}> ${esc(t[1])}</label>`).join('')}</div>
+    <p style="margin:8px 0 0"><button class="btn ghost" data-act="cpkgReset">Tick all (default)</button></p>`);
+}
 function vPkgCard() {
   const provs = (settings.hmos || []).map(x => x.name), prov = curPkgProv(), cur = packageFor(prov);
-  return coll('pkg', 'Provider packages', `
+  return coll('pkg', 'HMO package (per provider): tests the HMO pays for members', `
     <p style="font-size:12px;margin:0 0 8px">Tick the tests each provider covers. On a provider statement only these are billed to it; the rest go to the company.</p>
     <div class="grid" style="grid-template-columns:110px 1fr;margin-bottom:8px"><label>Provider</label>
       <select data-psel>${provs.map(n => `<option value="${esc(n)}"${n === prov ? ' selected' : ''}>${esc(hmoLabel(n))}</option>`).join('')}</select></div>
@@ -711,6 +721,7 @@ function vPrices() {
       <label>Noted by</label><input data-set="noted.0" value="${esc(settings.noted[0])}">
       <label>Title</label><input data-set="noted.1" value="${esc(settings.noted[1])}">
     </div>`)}
+  ${vCompanyCard()}
   ${vPkgCard()}
   ${vHmoList()}
   ${coll('logo', 'Logo (printed in the header of every page)', `
@@ -765,6 +776,11 @@ function edit(el) {
       x.name = val; if (val !== old) renameProvider(old, val);
     } else x.alias = val;
     saveSettings(); return;
+  }
+  if (d.cpkg !== undefined) {
+    const ex = (settings.companyExcl || []).filter(x => x !== d.cpkg);
+    if (!el.checked) ex.push(d.cpkg);
+    settings.companyExcl = ex; COMPANY_EXCL = ex; saveSettings(); return;
   }
   if (d.ptest !== undefined) {
     const prov = curPkgProv(), cur = packageFor(prov).filter(id => id !== d.ptest);
@@ -840,6 +856,7 @@ $('#view').addEventListener('click', e => {
   const a = b.dataset.act;
   if (['upLogo', 'rmLogo', 'sign', 'upSig', 'clrSig', 'pkgReset'].includes(a)) return settingsAction(a, b.dataset.k);
   if (a === 'dlSoa') return downloadSoa();
+  if (a === 'cpkgReset') { settings.companyExcl = []; COMPANY_EXCL = []; saveSettings(); return render(); }
   if (a === 'snHmo' || a === 'snCo') {
     const lo = +$(a === 'snHmo' ? '#snH1' : '#snC1').value, hi = +$(a === 'snHmo' ? '#snH2' : '#snC2').value;
     if (!(lo > 0 && hi >= lo)) return alert('Enter the first and last serial numbers (the first must not be larger than the last).');
@@ -1063,6 +1080,8 @@ function dropExtra(code) {
 }
 // settings that depend on the saved settings: runs after the cloud settings are loaded
 function normalizeSettings() {
+  settings.companyExcl = Array.isArray(settings.companyExcl) ? settings.companyExcl : [];
+  COMPANY_EXCL = settings.companyExcl;
   settings.sigs = { prepared: '', noted: '', ...(settings.sigs || {}) };
   settings.sigSize = { prepared: 100, noted: 150, ...(settings.sigSize || {}) };
   settings.extraTests = settings.extraTests || [];
@@ -1114,7 +1133,7 @@ async function startApp() {
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 <script>
 const firebaseConfig = {
-  apiKey: "AIzaSyAnzaC0zBY3eHPFjw5UUG3E8Slj2en98OU",
+  apiKey: "PASTE_YOUR_WEB_API_KEY",
   authDomain: "ape-billing.firebaseapp.com",
   projectId: "ape-billing",
   storageBucket: "ape-billing.firebasestorage.app",
