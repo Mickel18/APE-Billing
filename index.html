@@ -225,13 +225,14 @@ function billing(c, packageOf) {
   const pkg = pkgOf(prov), lines = []; let total = 0;
   if (!(hmo && !prov)) c.patients.forEach(p => {
     const member = p.mem === true;
-    if (hmo ? !member : p.co === false) return;      // HMO statement: members. Company statement: company-billed patients.
+    const co2only = p.co === false;                  // Company 2 only: outside the package, whatever the membership
+    if (hmo ? !member : (p.co === false && p.co2 !== true)) return;   // HMO statement: members. Company: Company or Company 2 patients.
     const parts = []; let amt = 0, avail = availSet(p);
     LINE_TESTS.forEach(t => {
       const pr = price(c, t), inPkg = pkg.includes(t[0]);
       if (!avail.has(t[0]) || !(pr > 0)) return;
       if (!hmo && COMPANY_EXCL.includes(t[0])) return;   // not covered by the company
-      if (hmo ? !inPkg : (member && prov && inPkg)) return;   // a member's package tests belong to the HMO
+      if (hmo ? !inPkg : (co2only ? inPkg : (member && prov && inPkg))) return;   // package tests belong to the HMO (members) or are left out (Company 2)
       parts.push(t[1]); amt += pr;
     });
     if (!parts.length) return;
@@ -439,7 +440,7 @@ function renameProvider(oldName, newName) {
 function vCompanyCard() {
   const excl = settings.companyExcl || [];
   return coll('cpkg', 'Company-billed package: tests the company pays for', `
-    <p style="font-size:12px;margin:0 0 8px">Tick the tests the company pays for. All are ticked by default. Non-members are billed the ticked tests. A member is billed the ticked tests minus the tests in the HMO package of their provider. For a patient with CHEM ticked on the Inventory tab, the chemistry tests named in the remarks are billed individually; if none are named, the Chemistry package is billed.</p>
+    <p style="font-size:12px;margin:0 0 8px">Tick the tests the company pays for. All are ticked by default. Non-members are billed the ticked tests. A member is billed the ticked tests minus the tests in the HMO package of their provider. A patient with Company 2 ticked is billed the ticked tests outside the HMO package, even if HMO and Company are unticked. For a patient with CHEM ticked on the Inventory tab, the chemistry tests named in the remarks are billed individually; if none are named, the Chemistry package is billed.</p>
     <div style="columns:2;font-size:13px">${TESTS.map(t => `<label style="display:block;break-inside:avoid"><input type="checkbox" data-cpkg="${t[0]}" ${excl.includes(t[0]) ? '' : 'checked'}> ${esc(t[1])}</label>`).join('')}</div>
     <p style="margin:8px 0 0"><button class="btn ghost" data-act="cpkgReset">Tick all (default)</button></p>`);
 }
@@ -591,12 +592,13 @@ function vInv() {
       <button class="btn ghost" data-act="snCo">Set as non-members</button>
     </div>
   </div>
-  <div class="tw"><table><thead><tr><th>#</th><th title="Tick = HMO member. Their package is billed to the HMO."><label style="font-weight:normal"><input type="checkbox" data-all="mem" ${co.patients.length && co.patients.every(p => p.mem === true) ? 'checked' : ''}> HMO</label></th><th title="Tick = billed to the company (default)."><label style="font-weight:normal"><input type="checkbox" data-all="cob" ${co.patients.length && co.patients.every(p => p.co !== false) ? 'checked' : ''}> Company</label></th><th>Account No.</th><th>Name</th><th>Birthday</th><th>Age</th><th>Sex</th>
+  <div class="tw"><table><thead><tr><th>#</th><th title="Tick = HMO member. Their package is billed to the HMO."><label style="font-weight:normal"><input type="checkbox" data-all="mem" ${co.patients.length && co.patients.every(p => p.mem === true) ? 'checked' : ''}> HMO</label></th><th title="Tick = billed to the company (default)."><label style="font-weight:normal"><input type="checkbox" data-all="cob" ${co.patients.length && co.patients.every(p => p.co !== false) ? 'checked' : ''}> Company</label></th><th title="Tick = bill this patient's tests outside the HMO package to the company (even if HMO and Company are unticked)."><label style="font-weight:normal">Company 2</label></th><th>Account No.</th><th>Name</th><th>Birthday</th><th>Age</th><th>Sex</th>
     ${FLAGS.map(k => `<th>${k}</th>`).join('')}<th>Remarks</th>${hasDoc ? '<th>Physician</th>' : ''}<th class="noprint"></th></tr></thead><tbody>`;
   co.patients.forEach((p, i) => {
     h += `<tr><td>${p.sn ?? i + 1}</td>
       <td class="c"><input type="checkbox" data-i="${i}" data-mem="1" ${p.mem === true ? 'checked' : ''}></td>
       <td class="c"><input type="checkbox" data-i="${i}" data-cob="1" ${p.co === false ? '' : 'checked'}></td>
+      <td class="c"><input type="checkbox" data-i="${i}" data-co2="1" ${p.co2 === true ? 'checked' : ''}></td>
       <td><input type="text" data-i="${i}" data-f="acc" value="${esc(p.acc)}"></td>
       <td><input type="text" data-i="${i}" data-f="name" value="${esc(p.name)}" style="min-width:210px"></td>
       <td><input type="date" data-i="${i}" data-f="bd" value="${esc(p.bd || '')}"></td>
@@ -608,7 +610,7 @@ function vInv() {
       <td class="noprint"><button class="btn danger" data-act="del" data-i="${i}">×</button></td></tr>`;
   });
   const cnt = FLAGS.map(k => co.patients.filter(p => flag(p.t?.[k])).length);
-  h += `</tbody><tfoot><tr class="tot"><td colspan="8">Count</td>${cnt.map(c => `<td class="c">${c}</td>`).join('')}<td colspan="${hasDoc ? 3 : 2}"></td></tr></tfoot></table></div>`;
+  h += `</tbody><tfoot><tr class="tot"><td colspan="9">Count</td>${cnt.map(c => `<td class="c">${c}</td>`).join('')}<td colspan="${hasDoc ? 3 : 2}"></td></tr></tfoot></table></div>`;
   return h;
 }
 
@@ -810,6 +812,7 @@ function edit(el) {
   if (d.all !== undefined) { co.patients.forEach(p => { if (d.all === 'mem') p.mem = el.checked; else p.co = el.checked; }); dirty = true; markDirty(); return; }
   if (d.mem !== undefined) { co.patients[+d.i].mem = el.checked; dirty = true; markDirty(); return; }
   if (d.cob !== undefined) { co.patients[+d.i].co = el.checked; dirty = true; markDirty(); return; }
+  if (d.co2 !== undefined) { co.patients[+d.i].co2 = el.checked; dirty = true; markDirty(); return; }
   if (d.bt !== undefined) { if (el.checked) { co.billType = d.bt; co.billed = false; co.transmittal = ''; co.downpayment = ''; } }
   else if (d.t !== undefined) { const p = co.patients[+d.i]; (p.t || (p.t = {}))[d.t] = el.checked ? 1 : ''; }
   else if (d.i !== undefined && d.f) co.patients[+d.i][d.f] = d.f === 'sex' ? el.value.toUpperCase() : el.value;
