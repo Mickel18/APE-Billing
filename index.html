@@ -198,6 +198,26 @@ const HMO_PKG = ['B5', 'ECG', 'PS'];
 // Set the provider once per company (Inventory tab). The provider's package is set under Prices & Letterhead.
 //   company: every billable test; if a provider is set, its package tests are left for the provider statement.
 //   hmo:     only the provider's package tests.
+// chemistry tests covered by the Chemistry package (CHEM). A ticked CHEM means extra chemistry tests were taken;
+// the remarks name them. Named tests are billed individually; with no names, the Chemistry package is billed.
+const CHEM_SUBS = ['FBS', 'BUA', 'BUN', 'CREA', 'SGPT', 'SGOT', 'TCHOL', 'TRIG', 'LIPID'];
+const CHEM_ALIAS = { 'CREATININE': 'CREA', 'CHOLESTEROL': 'TCHOL', 'TRIGLYCERIDE': 'TRIG', 'TRIGLYCERIDES': 'TRIG' };
+function namedTests(text) {
+  const norm = s => ' ' + String(s || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim() + ' ';
+  const r = norm(text), ids = new Set();
+  TESTS.forEach(t => [t[1], t[3]].forEach(n => { if (r.includes(norm(n))) ids.add(t[0]); }));
+  Object.entries(CHEM_ALIAS).forEach(([k, id]) => { if (r.includes(norm(k))) ids.add(id); });
+  return [...ids];
+}
+// every test this patient availed
+function availSet(p) {
+  const set = new Set(TESTS.filter(t => bdHas(p, t)).map(t => t[0]));
+  if (flag(p.t?.CHEM)) {
+    const named = namedTests(p.rem).filter(id => CHEM_SUBS.includes(id));
+    if (named.length) { named.forEach(id => set.add(id)); set.delete('CHEM'); }
+  }
+  return set;
+}
 // tests the company does NOT pay for (set under Prices & Letterhead → Company-billed package). Empty = all tests.
 let COMPANY_EXCL = [];
 function billing(c, packageOf) {
@@ -206,10 +226,10 @@ function billing(c, packageOf) {
   if (!(hmo && !prov)) c.patients.forEach(p => {
     const member = p.mem === true;
     if (hmo ? !member : p.co === false) return;      // HMO statement: members. Company statement: company-billed patients.
-    const parts = []; let amt = 0;
+    const parts = []; let amt = 0, avail = availSet(p);
     LINE_TESTS.forEach(t => {
       const pr = price(c, t), inPkg = pkg.includes(t[0]);
-      if (!bdHas(p, t) || !(pr > 0)) return;
+      if (!avail.has(t[0]) || !(pr > 0)) return;
       if (!hmo && COMPANY_EXCL.includes(t[0])) return;   // not covered by the company
       if (hmo ? !inPkg : (member && prov && inPkg)) return;   // a member's package tests belong to the HMO
       parts.push(t[1]); amt += pr;
@@ -419,7 +439,7 @@ function renameProvider(oldName, newName) {
 function vCompanyCard() {
   const excl = settings.companyExcl || [];
   return coll('cpkg', 'Company-billed package: tests the company pays for', `
-    <p style="font-size:12px;margin:0 0 8px">Tick the tests the company pays for. All are ticked by default. Non-members are billed the ticked tests. A member is billed the ticked tests minus the tests in the HMO package of their provider.</p>
+    <p style="font-size:12px;margin:0 0 8px">Tick the tests the company pays for. All are ticked by default. Non-members are billed the ticked tests. A member is billed the ticked tests minus the tests in the HMO package of their provider. For a patient with CHEM ticked on the Inventory tab, the chemistry tests named in the remarks are billed individually; if none are named, the Chemistry package is billed.</p>
     <div style="columns:2;font-size:13px">${TESTS.map(t => `<label style="display:block;break-inside:avoid"><input type="checkbox" data-cpkg="${t[0]}" ${excl.includes(t[0]) ? '' : 'checked'}> ${esc(t[1])}</label>`).join('')}</div>
     <p style="margin:8px 0 0"><button class="btn ghost" data-act="cpkgReset">Tick all (default)</button></p>`);
 }
@@ -601,9 +621,9 @@ function vBd() {
     <tr class="tot"><td colspan="5">BILL PRICE</td>${TESTS.map(t => `<td class="c">${price(co, t) || ''}</td>`).join('')}</tr>`;
   co.patients.forEach((p, i) => {
     h += `<tr><td>${p.sn ?? i + 1}</td><td>${esc(p.name)}</td><td>${fmtD(p.bd)}</td><td class="c">${age(p.bd, co.date)}</td><td class="c">${esc(p.sex)}</td>
-      ${TESTS.map(t => `<td class="c">${bdHas(p, t) ? 1 : ''}</td>`).join('')}</tr>`;
+      ${TESTS.map(t => `<td class="c">${availSet(p).has(t[0]) ? 1 : ''}</td>`).join('')}</tr>`;
   });
-  const cnt = TESTS.map(t => co.patients.filter(p => bdHas(p, t)).length);
+  const cnt = TESTS.map(t => co.patients.filter(p => availSet(p).has(t[0])).length);
   h += `</tbody><tfoot><tr class="tot"><td colspan="5">Count</td>${cnt.map(c => `<td class="c">${c}</td>`).join('')}</tr></tfoot></table></div></div>`;
   return h;
 }
